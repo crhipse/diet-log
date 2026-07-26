@@ -1,6 +1,8 @@
 import { LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AppNavigation from "./components/AppNavigation";
 import HomeScreen from "./screens/HomeScreen";
+import MetabolismScreen from "./screens/MetabolismScreen";
 import RecordDetailScreen from "./screens/RecordDetailScreen";
 import RecordEditorScreen, {
   type RecordEditorPayload
@@ -9,10 +11,14 @@ import SettingsScreen from "./screens/SettingsScreen";
 import { analyzeFoodRecord, testApiKey } from "./lib/ai";
 import {
   deleteRecordWithPhotos,
+  getMetabolismProfile,
   getPhotosForRecord,
   getSettings,
+  listDailyMetabolismEntries,
   listRecords,
   requestPersistentStorage,
+  saveMetabolismProfileAndEntry,
+  saveMetabolismProfile,
   saveRecord,
   saveSettings
 } from "./lib/db";
@@ -37,21 +43,24 @@ import {
   loadApiKey,
   saveApiKey
 } from "./lib/keyStore";
-import { sumRecords } from "./lib/nutrition";
+import { completeEnergyTotal, sumRecords } from "./lib/nutrition";
 import type {
   AppSettings,
+  DailyMetabolismEntry,
   FoodAnalysisResult,
   FoodItem,
   FoodRecord,
+  MetabolismProfile,
   PendingPhoto,
   PhotoAsset
 } from "./types";
 
 type Screen =
   | { name: "home" }
+  | { name: "metabolism" }
   | { name: "editor"; recordId?: string }
   | { name: "detail"; recordId: string }
-  | { name: "settings" };
+  | { name: "settings"; from?: "home" | "metabolism" };
 
 interface ToastState {
   id: number;
@@ -74,6 +83,11 @@ const EMPTY_TOTALS = {
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: "home" });
   const [records, setRecords] = useState<FoodRecord[]>([]);
+  const [metabolismProfile, setMetabolismProfile] =
+    useState<MetabolismProfile | null>(null);
+  const [metabolismEntries, setMetabolismEntries] = useState<
+    DailyMetabolismEntry[]
+  >([]);
   const [settings, setSettingsState] = useState<AppSettings | null>(null);
   const [selectedDay, setSelectedDay] = useState("");
   const [credential, setCredential] = useState(loadApiKey);
@@ -100,18 +114,37 @@ export default function App() {
     setRecords(await listRecords());
   }, []);
 
+  const reloadMetabolism = useCallback(async () => {
+    const [profile, entries] = await Promise.all([
+      getMetabolismProfile(),
+      listDailyMetabolismEntries()
+    ]);
+    setMetabolismProfile(profile ?? null);
+    setMetabolismEntries(entries);
+  }, []);
+
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
-        const [loadedRecords, loadedSettings, persisted] = await Promise.all([
+        const [
+          loadedRecords,
+          loadedSettings,
+          persisted,
+          loadedProfile,
+          loadedMetabolismEntries
+        ] = await Promise.all([
           listRecords(),
           getSettings(),
-          requestPersistentStorage()
+          requestPersistentStorage(),
+          getMetabolismProfile(),
+          listDailyMetabolismEntries()
         ]);
         if (!active) return;
         setRecords(loadedRecords);
         setSettingsState(loadedSettings);
+        setMetabolismProfile(loadedProfile ?? null);
+        setMetabolismEntries(loadedMetabolismEntries);
         setSelectedDay(getTodayDayKey(loadedSettings.dayStartHour));
         setStoragePersisted(persisted);
       } catch (error) {
@@ -144,6 +177,32 @@ export default function App() {
     () => (dayRecords.length > 0 ? sumRecords(dayRecords) : EMPTY_TOTALS),
     [dayRecords]
   );
+
+  const selectedMetabolismEntry =
+    metabolismEntries.find((entry) => entry.date === selectedDay) ?? null;
+
+  const learningEntries = useMemo(() => {
+    if (!settings) return [];
+    const today = getTodayDayKey(settings.dayStartHour);
+    return metabolismEntries.filter((entry) => entry.date <= today);
+  }, [metabolismEntries, settings]);
+
+  const intakeByDate = useMemo(() => {
+    if (!settings) return {};
+    const grouped = new Map<string, FoodRecord[]>();
+    for (const record of records) {
+      const dayKey = getRecordDayKey(record, settings.dayStartHour);
+      const group = grouped.get(dayKey);
+      if (group) group.push(record);
+      else grouped.set(dayKey, [record]);
+    }
+    return Object.fromEntries(
+      [...grouped].flatMap(([dayKey, dayRecordsForKey]) => {
+        const energyKcal = completeEnergyTotal(dayRecordsForKey);
+        return energyKcal == null ? [] : [[dayKey, energyKcal] as const];
+      })
+    ) as Record<string, number>;
+  }, [records, settings]);
 
   const selectedRecord =
     screen.name === "detail" || screen.name === "editor"
@@ -472,6 +531,37 @@ export default function App() {
     }
   };
 
+  const updateMetabolismProfile = async (profile: MetabolismProfile) => {
+    setBusy(true);
+    try {
+      const saved = await saveMetabolismProfile(profile);
+      setMetabolismProfile(saved);
+      notify("대사량 프로필과 활동 템플릿을 저장했어요.");
+    } catch (error) {
+      notify(errorMessage(error, "대사량 프로필을 저장하지 못했습니다."), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateMetabolismDay = async (
+    profile: MetabolismProfile,
+    entry: DailyMetabolismEntry
+  ) => {
+    setBusy(true);
+    try {
+      await saveMetabolismProfileAndEntry(profile, entry);
+      await reloadMetabolism();
+      notify(
+        `${formatDayLabel(entry.date)} 기본 정보와 대사량 기록을 저장했어요.`
+      );
+    } catch (error) {
+      notify(errorMessage(error, "오늘의 대사량 기록을 저장하지 못했습니다."), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const exportFullBackup = async (includePhotos: boolean) => {
     setBusy(true);
     try {
@@ -486,7 +576,7 @@ export default function App() {
       notify(
         includePhotos
           ? "사진이 포함된 전체 백업을 만들었어요."
-          : "가벼운 기록 백업을 만들었어요."
+          : "식단과 대사량이 포함된 가벼운 기록 백업을 만들었어요."
       );
     } catch (error) {
       notify(errorMessage(error, "백업을 만들지 못했습니다."), "error");
@@ -501,12 +591,13 @@ export default function App() {
       const result = await importBackup(file, mode);
       const loadedSettings = await getSettings();
       setSettingsState(loadedSettings);
-      await reloadRecords();
+      await Promise.all([reloadRecords(), reloadMetabolism()]);
       setSelectedDay(getTodayDayKey(loadedSettings.dayStartHour));
       notify(
-        `${result.recordsImported}개 기록과 ${result.photosImported}개 사진을 ${
-          mode === "replace" ? "복원" : "병합"
-        }했어요.${
+        `${result.recordsImported}개 식단, ${result.photosImported}개 사진, ` +
+          `${result.metabolismEntriesImported}개 대사량 기록을 ${
+            mode === "replace" ? "복원" : "병합"
+          }했어요.${
           result.recordsSkipped > 0
             ? ` 더 최신인 기존 기록 ${result.recordsSkipped}개는 유지했어요.`
             : ""
@@ -602,9 +693,30 @@ export default function App() {
           onPreviousDate={() => setSelectedDay(addDays(selectedDay, -1))}
           onNextDate={() => setSelectedDay(addDays(selectedDay, 1))}
           onToday={() => setSelectedDay(getTodayDayKey(settings.dayStartHour))}
-          onOpenSettings={() => setScreen({ name: "settings" })}
+          onOpenSettings={() => setScreen({ name: "settings", from: "home" })}
           onAddRecord={() => void openEditor()}
           onOpenRecord={(recordId) => setScreen({ name: "detail", recordId })}
+        />
+      )}
+
+      {screen.name === "metabolism" && (
+        <MetabolismScreen
+          selectedDay={selectedDay}
+          dateLabel={formatDayLabel(selectedDay)}
+          isToday={selectedDay === getTodayDayKey(settings.dayStartHour)}
+          profile={metabolismProfile}
+          entry={selectedMetabolismEntry}
+          history={learningEntries}
+          intakeByDate={intakeByDate}
+          isBusy={busy}
+          onPreviousDate={() => setSelectedDay(addDays(selectedDay, -1))}
+          onNextDate={() => setSelectedDay(addDays(selectedDay, 1))}
+          onToday={() => setSelectedDay(getTodayDayKey(settings.dayStartHour))}
+          onOpenSettings={() =>
+            setScreen({ name: "settings", from: "metabolism" })
+          }
+          onSaveProfile={updateMetabolismProfile}
+          onSaveDay={updateMetabolismDay}
         />
       )}
 
@@ -667,9 +779,16 @@ export default function App() {
           apiKey={credential.apiKey}
           remembered={credential.remembered}
           recordCount={records.length}
+          metabolismRecordCount={metabolismEntries.length}
           storagePersisted={storagePersisted}
           isBusy={busy}
-          onBack={() => setScreen({ name: "home" })}
+          onBack={() =>
+            setScreen(
+              screen.from === "metabolism"
+                ? { name: "metabolism" }
+                : { name: "home" }
+            )
+          }
           onSaveApiKey={updateApiKey}
           onClearApiKey={removeApiKey}
           onTestApiKey={checkApiKey}
@@ -680,6 +799,23 @@ export default function App() {
           onShareMarkdown={shareMarkdown}
           onDownloadCsv={downloadCsv}
           onNotify={notify}
+        />
+      )}
+
+      {(screen.name === "home" || screen.name === "metabolism") && (
+        <AppNavigation
+          active={screen.name === "home" ? "diet" : "metabolism"}
+          onChange={(section) => {
+            if (
+              section === "metabolism" &&
+              selectedDay > getTodayDayKey(settings.dayStartHour)
+            ) {
+              setSelectedDay(getTodayDayKey(settings.dayStartHour));
+            }
+            setScreen(
+              section === "diet" ? { name: "home" } : { name: "metabolism" }
+            );
+          }}
         />
       )}
 

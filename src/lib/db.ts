@@ -1,7 +1,18 @@
 import Dexie, { type Table } from "dexie";
 
 import { DEFAULT_SETTINGS } from "../constants";
-import type { AppSettings, FoodRecord, PhotoAsset } from "../types";
+import type {
+  AppSettings,
+  DailyMetabolismEntry,
+  FoodRecord,
+  MetabolismProfile,
+  PhotoAsset
+} from "../types";
+import {
+  validateDailyMetabolismEntry,
+  validateDateKey,
+  validateMetabolismProfile
+} from "./metabolism";
 
 export const DATABASE_NAME = "diet-log";
 
@@ -9,6 +20,8 @@ export class DietLogDatabase extends Dexie {
   records!: Table<FoodRecord, string>;
   photos!: Table<PhotoAsset, string>;
   settings!: Table<AppSettings, "app">;
+  metabolismProfiles!: Table<MetabolismProfile, "metabolism">;
+  dailyMetabolismEntries!: Table<DailyMetabolismEntry, string>;
 
   constructor(name = DATABASE_NAME) {
     super(name);
@@ -16,6 +29,13 @@ export class DietLogDatabase extends Dexie {
       records: "&id, consumedAt, updatedAt",
       photos: "&id, recordId, [recordId+createdAt], createdAt",
       settings: "&id"
+    });
+    this.version(2).stores({
+      records: "&id, consumedAt, updatedAt",
+      photos: "&id, recordId, [recordId+createdAt], createdAt",
+      settings: "&id",
+      metabolismProfiles: "&id, updatedAt",
+      dailyMetabolismEntries: "&id, date, updatedAt"
     });
   }
 }
@@ -191,6 +211,101 @@ export async function saveSettings(
   };
   await db.settings.put(next);
   return next;
+}
+
+export async function getMetabolismProfile(): Promise<
+  MetabolismProfile | undefined
+> {
+  return db.metabolismProfiles.get("metabolism");
+}
+
+/**
+ * There is intentionally only one profile per browser. The literal ID and
+ * primary key keep this invariant true even if save is called repeatedly.
+ */
+export async function saveMetabolismProfile(
+  profile: MetabolismProfile
+): Promise<MetabolismProfile> {
+  validateMetabolismProfile(profile);
+  await db.metabolismProfiles.put(profile);
+  return profile;
+}
+
+export async function getDailyMetabolismEntry(
+  date: string
+): Promise<DailyMetabolismEntry | undefined> {
+  validateDateKey(date);
+  return db.dailyMetabolismEntries.get(date);
+}
+
+export async function saveDailyMetabolismEntry(
+  entry: DailyMetabolismEntry
+): Promise<DailyMetabolismEntry> {
+  validateDailyMetabolismEntry(entry);
+  await db.dailyMetabolismEntries.put(entry);
+  return entry;
+}
+
+/**
+ * Saves the current profile/templates together with the day's entry. This
+ * prevents a successful day save from discarding unsaved profile edits when
+ * the screen reloads its IndexedDB state.
+ */
+export async function saveMetabolismProfileAndEntry(
+  profile: MetabolismProfile,
+  entry: DailyMetabolismEntry
+): Promise<void> {
+  validateMetabolismProfile(profile);
+  validateDailyMetabolismEntry(entry);
+  await db.transaction(
+    "rw",
+    db.metabolismProfiles,
+    db.dailyMetabolismEntries,
+    async () => {
+      await db.metabolismProfiles.put(profile);
+      await db.dailyMetabolismEntries.put(entry);
+    }
+  );
+}
+
+/**
+ * Lists entries in chronological order. Both optional date bounds are
+ * inclusive.
+ */
+export async function listDailyMetabolismEntries(
+  fromDate?: string,
+  toDate?: string
+): Promise<DailyMetabolismEntry[]> {
+  if (fromDate !== undefined) validateDateKey(fromDate, "시작 날짜");
+  if (toDate !== undefined) validateDateKey(toDate, "종료 날짜");
+  if (fromDate && toDate && fromDate > toDate) {
+    throw new RangeError("시작 날짜는 종료 날짜보다 늦을 수 없습니다.");
+  }
+
+  if (fromDate && toDate) {
+    return db.dailyMetabolismEntries
+      .where("date")
+      .between(fromDate, toDate, true, true)
+      .sortBy("date");
+  }
+  if (fromDate) {
+    return db.dailyMetabolismEntries
+      .where("date")
+      .aboveOrEqual(fromDate)
+      .sortBy("date");
+  }
+  if (toDate) {
+    return db.dailyMetabolismEntries
+      .where("date")
+      .belowOrEqual(toDate)
+      .sortBy("date");
+  }
+  return db.dailyMetabolismEntries.orderBy("date").toArray();
+}
+
+export async function deleteDailyMetabolismEntry(date: string): Promise<void> {
+  validateDateKey(date);
+  await db.dailyMetabolismEntries.delete(date);
 }
 
 /**

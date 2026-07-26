@@ -1,6 +1,6 @@
 import { EMPTY_NUTRIENTS } from "../constants";
-import type { FoodItem } from "../types";
-import { sumFoods } from "./nutrition";
+import type { FoodItem, FoodRecord } from "../types";
+import { completeEnergyTotal, sumFoods } from "./nutrition";
 
 function food(
   id: string,
@@ -40,5 +40,38 @@ describe("영양성분 합계", () => {
     ]);
 
     expect(totals.hasMissingCoreValues).toBe(false);
+  });
+
+  it("빈 기록이나 칼로리 미입력 음식이 있으면 학습용 합계를 만들지 않는다", () => {
+    const record = (id: string, foods: FoodItem[]): FoodRecord => ({
+      id,
+      consumedAt: "2026-07-26T03:00:00.000Z",
+      timezoneOffsetMinutes: -540,
+      note: "",
+      photoIds: [],
+      foods,
+      analysis: { status: "not_requested", assumptions: [] },
+      createdAt: "2026-07-26T03:00:00.000Z",
+      updatedAt: "2026-07-26T03:00:00.000Z"
+    });
+
+    expect(
+      completeEnergyTotal([
+        record("known", [food("a", { energyKcal: 500 })]),
+        record("pending", [])
+      ])
+    ).toBeNull();
+    expect(
+      completeEnergyTotal([
+        record("known", [food("a", { energyKcal: 500 })]),
+        record("unknown", [food("b", { energyKcal: null })])
+      ])
+    ).toBeNull();
+    expect(
+      completeEnergyTotal([
+        record("a", [food("a", { energyKcal: 500 })]),
+        record("b", [food("b", { energyKcal: 300 })])
+      ])
+    ).toBe(800);
   });
 });

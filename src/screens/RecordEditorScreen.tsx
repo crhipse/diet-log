@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import FoodEditor, { createEmptyFood } from "../components/FoodEditor";
 import { MAX_PHOTOS_PER_RECORD } from "../constants";
 import {
+  composeDateTimeLocalValue,
   formatRecordDateTime,
   fromDateTimeLocalValue,
   toDateTimeLocalValue
@@ -65,12 +66,19 @@ export default function RecordEditorScreen({
   onSaveApiKey,
   onNotify
 }: RecordEditorScreenProps) {
-  const [consumedAt, setConsumedAt] = useState(() =>
+  const initialConsumedAt = useRef(
     toDateTimeLocalValue(
       initialRecord ? new Date(initialRecord.consumedAt) : new Date(),
       initialRecord?.timezoneOffsetMinutes
     )
+  ).current;
+  const [consumedDate, setConsumedDate] = useState(
+    initialConsumedAt.slice(0, 10)
   );
+  const [consumedHour, setConsumedHour] = useState(
+    initialConsumedAt.slice(11, 13)
+  );
+  const preservedMinuteRef = useRef(initialConsumedAt.slice(14, 16));
   const [note, setNote] = useState(initialRecord?.note ?? "");
   const [photos, setPhotos] = useState<PendingPhoto[]>(initialPhotos);
   const [foods, setFoods] = useState<FoodItem[]>(
@@ -102,15 +110,21 @@ export default function RecordEditorScreen({
 
   const buildPayload = (): RecordEditorPayload | null => {
     try {
+      const consumedAtValue = composeDateTimeLocalValue(
+        consumedDate,
+        consumedHour,
+        preservedMinuteRef.current
+      );
+      const parsedConsumedAt = fromDateTimeLocalValue(
+        consumedAtValue,
+        initialRecord?.timezoneOffsetMinutes
+      );
       return {
         existingRecordId: initialRecord?.id,
-        consumedAt: fromDateTimeLocalValue(
-          consumedAt,
-          initialRecord?.timezoneOffsetMinutes
-        ),
+        consumedAt: parsedConsumedAt,
         timezoneOffsetMinutes:
           initialRecord?.timezoneOffsetMinutes ??
-          fromDateTimeLocalValue(consumedAt).getTimezoneOffset(),
+          parsedConsumedAt.getTimezoneOffset(),
         note: note.trim(),
         photos,
         foods
@@ -224,19 +238,41 @@ export default function RecordEditorScreen({
 
       <div className="editor-screen__body">
         <section className="form-section">
-          <label className="field field--datetime">
-            <span>
-              <Clock3 size={16} aria-hidden="true" />
-              먹은 시각
-            </span>
-            <input
-              type="datetime-local"
-              required
-              value={consumedAt}
-              max="9999-12-31T23:59"
-              onChange={(event) => setConsumedAt(event.target.value)}
-            />
-          </label>
+          <div className="field-grid">
+            <label className="field field--datetime">
+              <span>
+                <Clock3 size={16} aria-hidden="true" />
+                먹은 날짜
+              </span>
+              <input
+                type="date"
+                required
+                value={consumedDate}
+                max="9999-12-31"
+                onChange={(event) => setConsumedDate(event.target.value)}
+              />
+            </label>
+            <label className="field field--datetime">
+              <span>
+                <Clock3 size={16} aria-hidden="true" />
+                먹은 시간
+              </span>
+              <select
+                required
+                value={consumedHour}
+                onChange={(event) => setConsumedHour(event.target.value)}
+              >
+                {Array.from({ length: 24 }, (_, hour) => {
+                  const value = String(hour).padStart(2, "0");
+                  return (
+                    <option value={value} key={value}>
+                      {hour}시
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+          </div>
         </section>
 
         <section className="form-section">

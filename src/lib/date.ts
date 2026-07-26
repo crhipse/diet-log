@@ -139,9 +139,7 @@ export function formatRecordTime(
     record.consumedAt,
     record.timezoneOffsetMinutes
   );
-  return `${pad2(wallClock.getUTCHours())}:${pad2(
-    wallClock.getUTCMinutes()
-  )}`;
+  return `${wallClock.getUTCHours()}시`;
 }
 
 /**

@@ -1,11 +1,17 @@
 import { EMPTY_NUTRIENTS } from "../constants";
-import type { DietLogBackup, FoodRecord } from "../types";
+import type {
+  DailyMetabolismEntry,
+  DietLogBackup,
+  FoodRecord,
+  MetabolismProfile
+} from "../types";
 import { db, saveRecord } from "./db";
 import {
   buildCsv,
   buildMarkdown,
   createBackup,
-  importBackup
+  importBackup,
+  parseBackup
 } from "./export";
 
 const fixture: FoodRecord = {
@@ -45,7 +51,7 @@ describe("기록 내보내기", () => {
     const markdown = buildMarkdown([fixture], 2);
 
     expect(markdown).toContain("2026년 7월 25일");
-    expect(markdown).toContain("다음 날 01:30");
+    expect(markdown).toContain("다음 날 1시");
     expect(markdown).toContain("체중 감량과 단백질 섭취");
     expect(markdown).toContain("1인분 300g으로 가정");
   });
@@ -81,11 +87,21 @@ describe("기록 내보내기", () => {
 
 describe("백업 병합", () => {
   beforeEach(async () => {
-    await db.transaction("rw", db.records, db.photos, db.settings, async () => {
-      await db.records.clear();
-      await db.photos.clear();
-      await db.settings.clear();
-    });
+    await db.transaction(
+      "rw",
+      db.records,
+      db.photos,
+      db.settings,
+      db.metabolismProfiles,
+      db.dailyMetabolismEntries,
+      async () => {
+        await db.records.clear();
+        await db.photos.clear();
+        await db.settings.clear();
+        await db.metabolismProfiles.clear();
+        await db.dailyMetabolismEntries.clear();
+      }
+    );
   });
 
   it("오래된 백업이 현재 기기의 더 최신인 기록을 덮어쓰지 않는다", async () => {
@@ -230,12 +246,95 @@ describe("백업 병합", () => {
     ]);
     expect(await db.photos.get("photo-keep")).toBeDefined();
   });
+
+  it("대사량 프로필과 일일 기록을 백업하고 복원한다", async () => {
+    await db.metabolismProfiles.put(metabolismProfileFixture);
+    await db.dailyMetabolismEntries.put(metabolismEntryFixture);
+
+    const backup = await createBackup({ includePhotos: false });
+
+    expect(backup.schemaVersion).toBe(2);
+    expect(backup.metabolismProfile?.jobTemplates).toHaveLength(2);
+    expect(backup.metabolismEntries).toEqual([metabolismEntryFixture]);
+
+    await db.metabolismProfiles.clear();
+    await db.dailyMetabolismEntries.clear();
+    const result = await importBackup(backup, "merge");
+
+    expect(result.metabolismProfileImported).toBe(true);
+    expect(result.metabolismEntriesImported).toBe(1);
+    expect(await db.metabolismProfiles.get("metabolism")).toEqual(
+      metabolismProfileFixture
+    );
+    expect(await db.dailyMetabolismEntries.get("2026-07-26")).toEqual(
+      metabolismEntryFixture
+    );
+  });
+
+  it("버전 1 백업은 빈 대사량 데이터가 있는 현재 형식으로 읽는다", () => {
+    const legacy = {
+      ...backupWith(fixture),
+      schemaVersion: 1
+    };
+    delete (legacy as Partial<DietLogBackup>).metabolismProfile;
+    delete (legacy as Partial<DietLogBackup>).metabolismEntries;
+
+    const parsed = parseBackup(legacy);
+
+    expect(parsed.schemaVersion).toBe(2);
+    expect(parsed.metabolismProfile).toBeNull();
+    expect(parsed.metabolismEntries).toEqual([]);
+  });
 });
+
+const metabolismProfileFixture: MetabolismProfile = {
+  id: "metabolism",
+  sex: "male",
+  birthDate: "1990-05-04",
+  heightCm: 175,
+  jobTemplates: [
+    {
+      id: "job-doctor",
+      name: "피부과 진료",
+      activityType: "standing",
+      defaultHours: 8
+    },
+    {
+      id: "job-investor",
+      name: "전업투자자 · 외부 탐방",
+      activityType: "walking",
+      defaultHours: 6
+    }
+  ],
+  exerciseTemplates: [],
+  createdAt: "2026-07-26T00:00:00.000Z",
+  updatedAt: "2026-07-26T00:00:00.000Z"
+};
+
+const metabolismEntryFixture: DailyMetabolismEntry = {
+  id: "2026-07-26",
+  date: "2026-07-26",
+  weightKg: 72,
+  steps: 8_500,
+  dietComplete: true,
+  jobActivities: [
+    {
+      id: "work-1",
+      templateId: "job-doctor",
+      name: "피부과 진료",
+      activityType: "standing",
+      hours: 8
+    }
+  ],
+  exercises: [],
+  createdAt: "2026-07-26T01:00:00.000Z",
+  updatedAt: "2026-07-26T01:00:00.000Z"
+};
 
 function backupWith(record: FoodRecord): DietLogBackup {
   return {
     app: "식단관리",
-    schemaVersion: 1,
+    schemaVersion: 2,
     photosIncluded: true,
     exportedAt: "2026-07-26T12:00:00.000Z",
     settings: {
@@ -245,6 +344,8 @@ function backupWith(record: FoodRecord): DietLogBackup {
       updatedAt: "2026-07-26T12:00:00.000Z"
     },
     records: [record],
-    photos: []
+    photos: [],
+    metabolismProfile: null,
+    metabolismEntries: []
   };
 }

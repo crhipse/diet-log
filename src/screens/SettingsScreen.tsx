@@ -27,6 +27,7 @@ interface SettingsScreenProps {
   apiKey: string;
   remembered: boolean;
   recordCount: number;
+  metabolismRecordCount: number;
   storagePersisted: boolean | null;
   isBusy: boolean;
   onBack: () => void;
@@ -47,6 +48,7 @@ export default function SettingsScreen({
   apiKey,
   remembered,
   recordCount,
+  metabolismRecordCount,
   storagePersisted,
   isBusy,
   onBack,
@@ -105,7 +107,9 @@ export default function SettingsScreen({
     if (
       restoreMode === "replace" &&
       !window.confirm(
-        `현재 저장된 ${recordCount}개 기록을 모두 지우고 백업으로 교체할까요? 이 작업은 되돌릴 수 없습니다.`
+        `현재 저장된 식단 ${recordCount}개와 대사량 ${metabolismRecordCount}일, ` +
+          "기본 정보·활동 템플릿을 모두 지우고 백업으로 교체할까요? " +
+          "이 작업은 되돌릴 수 없습니다."
       )
     ) {
       return;
@@ -391,7 +395,7 @@ export default function SettingsScreen({
             <div>
               <h2>백업과 복원</h2>
               <p>
-                현재 {recordCount}개 기록 ·{" "}
+                식단 {recordCount}개 · 대사량 {metabolismRecordCount}일 ·{" "}
                 {storagePersisted === true
                   ? "기기 저장 보호됨"
                   : storagePersisted === false
@@ -455,7 +459,8 @@ export default function SettingsScreen({
           </div>
           <p className="field-help">
             두 백업 모두 API 키를 포함하지 않습니다. 사진 없는 백업을
-            복원하면 식단과 영양성분만 복원됩니다.
+            복원해도 식단, 영양성분, 대사량 기록과 활동 템플릿은 모두
+            보존됩니다.
           </p>
         </section>
 

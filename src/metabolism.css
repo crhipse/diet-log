@@ -1,0 +1,948 @@
+.metabolism-screen {
+  padding-bottom: calc(88px + env(safe-area-inset-bottom));
+  background:
+    linear-gradient(180deg, #fffefa 0, #fffefa 168px, #f8f5ed 330px);
+}
+
+.metabolism-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 20px;
+  overflow: hidden;
+  border: 1px solid #e6dfd2;
+  border-radius: 20px;
+  background: #e6dfd2;
+  box-shadow: 0 8px 26px rgba(68, 57, 39, 0.06);
+}
+
+.metabolism-summary > div {
+  display: grid;
+  min-width: 0;
+  min-height: 102px;
+  padding: 15px 8px 13px;
+  align-content: center;
+  gap: 5px;
+  background: rgba(255, 254, 250, 0.97);
+  text-align: center;
+}
+
+.metabolism-summary > div:first-child {
+  border-radius: 19px 0 0 19px;
+}
+
+.metabolism-summary > div:last-child {
+  border-radius: 0 19px 19px 0;
+}
+
+.metabolism-summary span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 780;
+  letter-spacing: 0.06em;
+}
+
+.metabolism-summary strong {
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 850;
+  letter-spacing: -0.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metabolism-summary small {
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.metabolism-summary .metabolism-summary__total {
+  color: #794527;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.4), transparent),
+    #f7e8dd;
+}
+
+.metabolism-summary__total span,
+.metabolism-summary__total small {
+  color: #9a694f;
+}
+
+.metabolism-screen__body {
+  display: grid;
+  gap: 14px;
+  padding: 18px 16px 36px;
+}
+
+.metabolism-card,
+.metabolism-panel,
+.metabolism-subcard,
+.template-manager,
+.learning-today {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.metabolism-profile {
+  overflow: hidden;
+}
+
+.metabolism-profile > summary,
+.template-manager > summary {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 15px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.metabolism-profile > summary::-webkit-details-marker,
+.template-manager > summary::-webkit-details-marker {
+  display: none;
+}
+
+.metabolism-profile > summary > span:nth-child(2),
+.template-manager > summary > span {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.metabolism-profile > summary strong,
+.template-manager > summary strong {
+  font-size: 14px;
+  font-weight: 820;
+}
+
+.metabolism-profile > summary small,
+.template-manager > summary small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+}
+
+.metabolism-profile > summary > svg,
+.template-manager > summary > svg {
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.metabolism-profile[open] > summary > svg,
+.template-manager[open] > summary > svg {
+  transform: rotate(180deg);
+}
+
+.metabolism-card__icon,
+.subcard-heading__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.metabolism-profile__content,
+.template-manager__body {
+  display: grid;
+  gap: 14px;
+  padding: 0 15px 15px;
+  border-top: 1px solid var(--line);
+}
+
+.metabolism-profile__content {
+  padding-top: 15px;
+}
+
+.segmented-field {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.segmented-field legend {
+  padding: 0;
+  color: #56564f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.segmented-field > div {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 7px;
+}
+
+.segmented-field button {
+  min-height: 44px;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 740;
+}
+
+.segmented-field button.is-selected {
+  border-color: #a16a50;
+  color: #81492e;
+  background: #fdf3ec;
+  box-shadow: inset 0 0 0 1px rgba(161, 106, 80, 0.08);
+}
+
+.metabolism-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.metabolism-field-grid--three {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.metabolism-field-grid--three > :last-child {
+  grid-column: 1 / -1;
+}
+
+.metabolism-field-grid--template {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.metabolism-screen .field > span:first-child em {
+  margin-left: 3px;
+  color: var(--faint);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.formula-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px;
+  border-radius: 12px;
+  color: #5d5a51;
+  background: var(--surface-soft);
+}
+
+.formula-note > svg {
+  flex: none;
+  margin-top: 1px;
+  color: #8c705c;
+}
+
+.formula-note p {
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.formula-note strong {
+  color: #34322d;
+}
+
+.metabolism-save-button {
+  width: 100%;
+}
+
+.metabolism-tabs {
+  position: sticky;
+  z-index: 20;
+  top: calc(8px + env(safe-area-inset-top));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid rgba(218, 213, 201, 0.9);
+  border-radius: 16px;
+  background: rgba(255, 254, 250, 0.94);
+  box-shadow: 0 8px 24px rgba(59, 51, 37, 0.08);
+  backdrop-filter: blur(16px);
+}
+
+.metabolism-tabs button {
+  display: grid;
+  min-width: 0;
+  min-height: 50px;
+  padding: 7px 3px;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 11px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.metabolism-tabs button.is-selected {
+  color: #713f28;
+  background: var(--accent-soft);
+}
+
+.metabolism-panel {
+  padding: 16px;
+}
+
+.panel-heading,
+.subcard-heading,
+.template-section__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-heading {
+  margin-bottom: 15px;
+}
+
+.panel-heading h2 {
+  margin-top: 3px;
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: -0.035em;
+}
+
+.panel-heading > svg {
+  margin-top: 4px;
+  color: var(--accent);
+}
+
+.activity-level-list {
+  display: grid;
+  gap: 8px;
+}
+
+.activity-level-list > button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  min-height: 76px;
+  align-items: center;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+}
+
+.activity-level-list > button.is-selected {
+  border-color: #c38a6e;
+  background: #fdf5ef;
+  box-shadow: 0 4px 14px rgba(113, 63, 40, 0.06);
+}
+
+.activity-level-list__radio {
+  width: 17px;
+  height: 17px;
+  border: 2px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.activity-level-list > button.is-selected .activity-level-list__radio {
+  border: 5px solid var(--accent);
+}
+
+.activity-level-list > button > span:nth-child(2) {
+  display: grid;
+  gap: 4px;
+}
+
+.activity-level-list strong {
+  font-size: 13px;
+}
+
+.activity-level-list small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.activity-level-list b {
+  padding: 4px 7px;
+  border-radius: 999px;
+  color: #7e5039;
+  background: #f8e9df;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.instant-result {
+  display: grid;
+  margin-top: 14px;
+  padding: 17px;
+  border-radius: 16px;
+  color: white;
+  background:
+    radial-gradient(circle at 100% 0, rgba(255, 255, 255, 0.16), transparent 40%),
+    #25251f;
+}
+
+.instant-result > span {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.instant-result strong {
+  margin: 5px 0 8px;
+  font-size: 24px;
+  letter-spacing: -0.04em;
+}
+
+.instant-result small {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.instant-result button {
+  width: fit-content;
+  padding: 5px 0;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  font-size: 10px;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.metabolism-subcard {
+  margin-bottom: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: #fffefa;
+}
+
+.subcard-heading {
+  justify-content: flex-start;
+  margin-bottom: 13px;
+}
+
+.subcard-heading__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.subcard-heading h3,
+.template-section__heading h3 {
+  font-size: 13px;
+  font-weight: 820;
+}
+
+.subcard-heading p,
+.template-section__heading p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.quick-add-row,
+.example-jobs {
+  display: flex;
+  overflow-x: auto;
+  gap: 6px;
+  margin: 0 -14px 12px;
+  padding: 0 14px 3px;
+  scrollbar-width: none;
+}
+
+.quick-add-row::-webkit-scrollbar,
+.example-jobs::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-add-row button,
+.example-jobs button {
+  display: inline-flex;
+  min-height: 34px;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 10px;
+  border: 1px solid #ddcaba;
+  border-radius: 999px;
+  color: #75472f;
+  background: #fdf6f0;
+  font-size: 10px;
+  font-weight: 730;
+}
+
+.example-jobs {
+  margin-right: -1px;
+  margin-left: -1px;
+  padding-right: 1px;
+  padding-left: 1px;
+}
+
+.example-jobs button.is-added {
+  border-color: var(--line);
+  color: var(--faint);
+  background: var(--surface-soft);
+}
+
+.today-activity-list,
+.template-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.activity-total {
+  margin: -2px 0 10px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.activity-total--error {
+  color: var(--danger);
+}
+
+.today-activity,
+.template-edit-card {
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #fff;
+}
+
+.today-activity__heading,
+.template-edit-card__top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.template-manager {
+  margin-bottom: 12px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #fbfaf6;
+}
+
+.template-manager__body {
+  padding-top: 14px;
+}
+
+.template-section {
+  display: grid;
+  gap: 11px;
+}
+
+.template-section + .template-section {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.template-section__heading > svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.estimate-card {
+  margin-bottom: 12px;
+  padding: 15px;
+  border: 1px solid #d9d0bd;
+  border-radius: 16px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.8), rgba(247, 240, 226, 0.8)),
+    #f8f3e8;
+}
+
+.estimate-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.estimate-card__heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.estimate-card__heading span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.estimate-card__heading strong {
+  font-size: 23px;
+  letter-spacing: -0.04em;
+}
+
+.estimate-card__heading b {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: #765038;
+  background: #efe1cf;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.estimate-bar {
+  height: 7px;
+  margin: 13px 0 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eadbc7;
+}
+
+.estimate-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.estimate-card > p {
+  color: #5c584e;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.estimate-card ul {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding-left: 17px;
+}
+
+.estimate-card li {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.estimate-card__notice {
+  display: block;
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(195, 181, 157, 0.5);
+  color: #918a7c;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.completion-toggle {
+  display: block;
+  margin: 0 0 12px;
+  cursor: pointer;
+}
+
+.completion-toggle > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.completion-toggle > span {
+  display: flex;
+  min-height: 65px;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.completion-toggle > input:checked + span {
+  border-color: #98ad85;
+  color: #405c35;
+  background: #eff4eb;
+}
+
+.completion-toggle > input:focus-visible + span {
+  outline: 3px solid rgba(46, 104, 199, 0.25);
+  outline-offset: 2px;
+}
+
+.completion-toggle > span > svg {
+  flex: none;
+  color: var(--faint);
+}
+
+.completion-toggle > input:checked + span > svg {
+  color: #5c7d4d;
+}
+
+.completion-toggle > span > span {
+  display: grid;
+  gap: 3px;
+}
+
+.completion-toggle strong {
+  font-size: 12px;
+}
+
+.completion-toggle small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.learning-hero {
+  display: grid;
+  padding: 18px;
+  border-radius: 17px;
+  color: white;
+  background:
+    radial-gradient(circle at 92% 5%, rgba(255, 255, 255, 0.16), transparent 32%),
+    linear-gradient(145deg, #333429, #20211c);
+}
+
+.learning-hero__icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 12px;
+  place-items: center;
+  border-radius: 13px;
+  color: #f5c9ae;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.learning-hero > p {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 10px;
+}
+
+.learning-hero > strong {
+  margin: 4px 0 13px;
+  font-size: 24px;
+  letter-spacing: -0.045em;
+}
+
+.learning-hero > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 10px;
+}
+
+.learning-hero > div b {
+  color: #f6c6a8;
+}
+
+.learning-hero > small {
+  margin-top: 10px;
+  color: rgba(255, 255, 255, 0.57);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.learning-progress-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.progress-card {
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.progress-card > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.progress-card strong {
+  font-size: 12px;
+}
+
+.progress-card > div:first-child span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 780;
+}
+
+.progress-card__bar {
+  height: 7px;
+  margin: 9px 0 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #eeeae1;
+}
+
+.progress-card__bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.progress-card p {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.learning-today {
+  display: grid;
+  gap: 11px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.learning-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--line);
+  gap: 1px;
+}
+
+.learning-details > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 11px 7px;
+  background: #fff;
+  text-align: center;
+}
+
+.learning-details dt {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.learning-details dd {
+  margin: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 780;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.learning-guidance {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px;
+  border-radius: 13px;
+  color: #66583e;
+  background: #f7f0df;
+}
+
+.learning-guidance svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.learning-guidance p {
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.learning-today h3 {
+  font-size: 13px;
+}
+
+.learning-save-hint {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.completion-toggle--compact {
+  margin: 0;
+}
+
+@media (max-width: 380px) {
+  .metabolism-summary {
+    margin-right: 15px;
+    margin-left: 15px;
+  }
+
+  .metabolism-summary > div {
+    padding-right: 5px;
+    padding-left: 5px;
+  }
+
+  .metabolism-summary strong {
+    font-size: 14px;
+  }
+
+  .metabolism-screen__body {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .metabolism-panel {
+    padding: 13px;
+  }
+
+  .metabolism-tabs span {
+    font-size: 9px;
+  }
+
+  .activity-level-list > button {
+    grid-template-columns: 17px minmax(0, 1fr);
+  }
+
+  .activity-level-list > button b {
+    grid-column: 2;
+    width: fit-content;
+  }
+
+  .metabolism-field-grid,
+  .metabolism-field-grid--template {
+    grid-template-columns: 1fr;
+  }
+
+  .metabolism-field-grid--three > :last-child {
+    grid-column: auto;
+  }
+}
+
+@media (min-width: 560px) {
+  .metabolism-tabs {
+    top: 34px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metabolism-profile > summary > svg,
+  .template-manager > summary > svg {
+    transition: none;
+  }
+}

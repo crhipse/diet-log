@@ -4,14 +4,30 @@ import type {
   AppSettings,
   BackupPhoto,
   Confidence,
+  DailyExercise,
+  DailyMetabolismEntry,
+  DailyWorkActivity,
   DietLogBackup,
+  ExerciseCategory,
+  ExerciseIntensity,
+  ExerciseTemplate,
   FoodItem,
   FoodRecord,
   FoodSource,
+  MetabolismProfile,
   Nutrients,
-  PhotoAsset
+  PhotoAsset,
+  Sex,
+  WorkActivityType,
+  WorkTemplate
 } from "../types";
-import { db, getSettings, listRecords } from "./db";
+import {
+  db,
+  getMetabolismProfile,
+  getSettings,
+  listDailyMetabolismEntries,
+  listRecords
+} from "./db";
 import {
   formatDayKey,
   formatDayLabel,
@@ -21,6 +37,11 @@ import {
   groupRecordsByDay
 } from "./date";
 import { sumFoods, sumRecords } from "./nutrition";
+import {
+  validateDailyMetabolismEntry,
+  validateDateKey,
+  validateMetabolismProfile
+} from "./metabolism";
 
 export type ImportMode = "merge" | "replace";
 
@@ -33,6 +54,9 @@ export interface ImportBackupResult {
   recordsImported: number;
   recordsSkipped: number;
   photosImported: number;
+  metabolismEntriesImported: number;
+  metabolismEntriesSkipped: number;
+  metabolismProfileImported: boolean;
 }
 
 const SOURCES = new Set<FoodSource>(["ai", "manual", "copied"]);
@@ -43,6 +67,28 @@ const STATUSES = new Set<AnalysisMeta["status"]>([
   "failed"
 ]);
 const CONFIDENCES = new Set<Confidence>(["high", "medium", "low"]);
+const SEXES = new Set<Sex>(["male", "female"]);
+const WORK_ACTIVITY_TYPES = new Set<WorkActivityType>([
+  "seated",
+  "standing",
+  "walking",
+  "physical"
+]);
+const EXERCISE_CATEGORIES = new Set<ExerciseCategory>([
+  "walking",
+  "running",
+  "cycling",
+  "strength",
+  "swimming",
+  "sports",
+  "yoga",
+  "other"
+]);
+const EXERCISE_INTENSITIES = new Set<ExerciseIntensity>([
+  "low",
+  "moderate",
+  "high"
+]);
 const IMAGE_DATA_URL_PATTERN =
   /^data:image\/(?:jpeg|png|webp|gif|avif);base64,[a-z0-9+/]*={0,2}$/i;
 
@@ -259,6 +305,227 @@ function settingsAt(value: unknown, path: string): AppSettings {
   };
 }
 
+function dateKeyAt(value: unknown, path: string): string {
+  const dateKey = stringAt(value, path, { maxLength: 10 });
+  try {
+    validateDateKey(dateKey, path);
+  } catch (error) {
+    invalid(
+      path,
+      error instanceof Error ? error.message : "유효한 날짜여야 합니다."
+    );
+  }
+  return dateKey;
+}
+
+function workTemplateAt(value: unknown, path: string): WorkTemplate {
+  const item = objectAt(value, path);
+  const activityType = stringAt(
+    item.activityType,
+    `${path}.activityType`
+  ) as WorkActivityType;
+  if (!WORK_ACTIVITY_TYPES.has(activityType)) {
+    invalid(`${path}.activityType`, "알 수 없는 직업 활동 유형입니다.");
+  }
+  return {
+    id: stringAt(item.id, `${path}.id`, { maxLength: 100 }),
+    name: stringAt(item.name, `${path}.name`, { maxLength: 100 }),
+    activityType,
+    defaultHours: finiteNumberAt(
+      item.defaultHours,
+      `${path}.defaultHours`,
+      { min: 0.25, max: 24 }
+    ) as number
+  };
+}
+
+function exerciseTemplateAt(value: unknown, path: string): ExerciseTemplate {
+  const item = objectAt(value, path);
+  const category = stringAt(
+    item.category,
+    `${path}.category`
+  ) as ExerciseCategory;
+  const intensity = stringAt(
+    item.intensity,
+    `${path}.intensity`
+  ) as ExerciseIntensity;
+  if (!EXERCISE_CATEGORIES.has(category)) {
+    invalid(`${path}.category`, "알 수 없는 운동 종류입니다.");
+  }
+  if (!EXERCISE_INTENSITIES.has(intensity)) {
+    invalid(`${path}.intensity`, "알 수 없는 운동 강도입니다.");
+  }
+  return {
+    id: stringAt(item.id, `${path}.id`, { maxLength: 100 }),
+    name: stringAt(item.name, `${path}.name`, { maxLength: 100 }),
+    category,
+    intensity,
+    defaultDurationMinutes: finiteNumberAt(
+      item.defaultDurationMinutes,
+      `${path}.defaultDurationMinutes`,
+      { min: 1, max: 1_440 }
+    ) as number,
+    weeklyFrequency: finiteNumberAt(
+      item.weeklyFrequency,
+      `${path}.weeklyFrequency`,
+      { min: 0, max: 14 }
+    ) as number
+  };
+}
+
+function metabolismProfileAt(
+  value: unknown,
+  path: string
+): MetabolismProfile {
+  const item = objectAt(value, path);
+  if (item.id !== "metabolism") {
+    invalid(`${path}.id`, '"metabolism"이어야 합니다.');
+  }
+  const sex = stringAt(item.sex, `${path}.sex`) as Sex;
+  if (!SEXES.has(sex)) invalid(`${path}.sex`, "알 수 없는 계산 기준입니다.");
+  if (!Array.isArray(item.jobTemplates)) {
+    invalid(`${path}.jobTemplates`, "목록이어야 합니다.");
+  }
+  if (!Array.isArray(item.exerciseTemplates)) {
+    invalid(`${path}.exerciseTemplates`, "목록이어야 합니다.");
+  }
+  const profile: MetabolismProfile = {
+    id: "metabolism",
+    sex,
+    birthDate: dateKeyAt(item.birthDate, `${path}.birthDate`),
+    heightCm: finiteNumberAt(item.heightCm, `${path}.heightCm`, {
+      min: 100,
+      max: 250
+    }) as number,
+    jobTemplates: item.jobTemplates.map((template, index) =>
+      workTemplateAt(template, `${path}.jobTemplates[${index}]`)
+    ),
+    exerciseTemplates: item.exerciseTemplates.map((template, index) =>
+      exerciseTemplateAt(template, `${path}.exerciseTemplates[${index}]`)
+    ),
+    createdAt: isoDateAt(item.createdAt, `${path}.createdAt`),
+    updatedAt: isoDateAt(item.updatedAt, `${path}.updatedAt`)
+  };
+  try {
+    validateMetabolismProfile(profile);
+  } catch (error) {
+    invalid(
+      path,
+      error instanceof Error ? error.message : "프로필이 올바르지 않습니다."
+    );
+  }
+  return profile;
+}
+
+function dailyWorkActivityAt(
+  value: unknown,
+  path: string
+): DailyWorkActivity {
+  const item = objectAt(value, path);
+  const activityType = stringAt(
+    item.activityType,
+    `${path}.activityType`
+  ) as WorkActivityType;
+  if (!WORK_ACTIVITY_TYPES.has(activityType)) {
+    invalid(`${path}.activityType`, "알 수 없는 직업 활동 유형입니다.");
+  }
+  return {
+    id: stringAt(item.id, `${path}.id`, { maxLength: 100 }),
+    templateId: optionalStringAt(item.templateId, `${path}.templateId`, 100),
+    name: stringAt(item.name, `${path}.name`, { maxLength: 100 }),
+    activityType,
+    hours: finiteNumberAt(item.hours, `${path}.hours`, {
+      min: 0.25,
+      max: 24
+    }) as number
+  };
+}
+
+function dailyExerciseAt(value: unknown, path: string): DailyExercise {
+  const item = objectAt(value, path);
+  const category = stringAt(
+    item.category,
+    `${path}.category`
+  ) as ExerciseCategory;
+  const intensity = stringAt(
+    item.intensity,
+    `${path}.intensity`
+  ) as ExerciseIntensity;
+  if (!EXERCISE_CATEGORIES.has(category)) {
+    invalid(`${path}.category`, "알 수 없는 운동 종류입니다.");
+  }
+  if (!EXERCISE_INTENSITIES.has(intensity)) {
+    invalid(`${path}.intensity`, "알 수 없는 운동 강도입니다.");
+  }
+  return {
+    id: stringAt(item.id, `${path}.id`, { maxLength: 100 }),
+    templateId: optionalStringAt(item.templateId, `${path}.templateId`, 100),
+    name: stringAt(item.name, `${path}.name`, { maxLength: 100 }),
+    category,
+    intensity,
+    durationMinutes: finiteNumberAt(
+      item.durationMinutes,
+      `${path}.durationMinutes`,
+      { min: 1, max: 1_440 }
+    ) as number
+  };
+}
+
+function dailyMetabolismEntryAt(
+  value: unknown,
+  path: string
+): DailyMetabolismEntry {
+  const item = objectAt(value, path);
+  if (!Array.isArray(item.jobActivities)) {
+    invalid(`${path}.jobActivities`, "목록이어야 합니다.");
+  }
+  if (!Array.isArray(item.exercises)) {
+    invalid(`${path}.exercises`, "목록이어야 합니다.");
+  }
+  const entry: DailyMetabolismEntry = {
+    id: dateKeyAt(item.id, `${path}.id`),
+    date: dateKeyAt(item.date, `${path}.date`),
+    weightKg: finiteNumberAt(item.weightKg, `${path}.weightKg`, {
+      min: 30,
+      max: 350
+    }) as number,
+    bodyFatPercent:
+      item.bodyFatPercent == null
+        ? undefined
+        : (finiteNumberAt(
+            item.bodyFatPercent,
+            `${path}.bodyFatPercent`,
+            { min: 1, max: 75 }
+          ) as number),
+    steps:
+      item.steps == null
+        ? undefined
+        : (finiteNumberAt(item.steps, `${path}.steps`, {
+            integer: true,
+            min: 0,
+            max: 200_000
+          }) as number),
+    dietComplete: booleanAt(item.dietComplete, `${path}.dietComplete`),
+    jobActivities: item.jobActivities.map((activity, index) =>
+      dailyWorkActivityAt(activity, `${path}.jobActivities[${index}]`)
+    ),
+    exercises: item.exercises.map((exercise, index) =>
+      dailyExerciseAt(exercise, `${path}.exercises[${index}]`)
+    ),
+    createdAt: isoDateAt(item.createdAt, `${path}.createdAt`),
+    updatedAt: isoDateAt(item.updatedAt, `${path}.updatedAt`)
+  };
+  try {
+    validateDailyMetabolismEntry(entry);
+  } catch (error) {
+    invalid(
+      path,
+      error instanceof Error ? error.message : "일일 기록이 올바르지 않습니다."
+    );
+  }
+  return entry;
+}
+
 function photoAt(value: unknown, path: string): BackupPhoto {
   const item = objectAt(value, path);
   const dataUrl = stringAt(item.dataUrl, `${path}.dataUrl`, {
@@ -292,8 +559,8 @@ function photoAt(value: unknown, path: string): BackupPhoto {
 }
 
 /**
- * Parses and whitelists a version-1 backup. Unknown properties are discarded;
- * all data that enters IndexedDB is rebuilt from the public backup schema.
+ * Parses and whitelists a backup. Version-1 food-only backups are normalized
+ * to the current schema with empty metabolism data.
  */
 export function parseBackup(value: string | unknown): DietLogBackup {
   let parsed: unknown = value;
@@ -307,7 +574,7 @@ export function parseBackup(value: string | unknown): DietLogBackup {
 
   const root = objectAt(parsed, "최상위");
   if (root.app !== APP_NAME) invalid("app", `"${APP_NAME}" 백업이 아닙니다.`);
-  if (root.schemaVersion !== 1) {
+  if (root.schemaVersion !== 1 && root.schemaVersion !== 2) {
     invalid("schemaVersion", "지원하지 않는 백업 버전입니다.");
   }
   if (!Array.isArray(root.records)) invalid("records", "목록이어야 합니다.");
@@ -348,9 +615,31 @@ export function parseBackup(value: string | unknown): DietLogBackup {
     }
   }
 
+  const metabolismProfile =
+    root.schemaVersion === 1 || root.metabolismProfile == null
+      ? null
+      : metabolismProfileAt(root.metabolismProfile, "metabolismProfile");
+  const metabolismEntries =
+    root.schemaVersion === 1
+      ? []
+      : (() => {
+          if (!Array.isArray(root.metabolismEntries)) {
+            invalid("metabolismEntries", "목록이어야 합니다.");
+          }
+          const entries = root.metabolismEntries.map((entry, index) =>
+            dailyMetabolismEntryAt(entry, `metabolismEntries[${index}]`)
+          );
+          if (
+            new Set(entries.map((entry) => entry.id)).size !== entries.length
+          ) {
+            invalid("metabolismEntries", "날짜가 중복되었습니다.");
+          }
+          return entries;
+        })();
+
   return {
     app: APP_NAME,
-    schemaVersion: 1,
+    schemaVersion: 2,
     // Backups created before this flag existed always included every photo.
     photosIncluded:
       root.photosIncluded == null
@@ -359,7 +648,9 @@ export function parseBackup(value: string | unknown): DietLogBackup {
     exportedAt: isoDateAt(root.exportedAt, "exportedAt"),
     settings: settingsAt(root.settings, "settings"),
     records,
-    photos
+    photos,
+    metabolismProfile,
+    metabolismEntries
   };
 }
 
@@ -394,19 +685,24 @@ export async function createBackup(
   options: BackupOptions = {}
 ): Promise<DietLogBackup> {
   const includePhotos = options.includePhotos ?? true;
-  const [settings, records] = await Promise.all([
+  const [settings, records, metabolismProfile, metabolismEntries] =
+    await Promise.all([
     getSettings(),
-    listRecords()
+    listRecords(),
+    getMetabolismProfile(),
+    listDailyMetabolismEntries()
   ]);
   if (!includePhotos) {
     return {
       app: APP_NAME,
-      schemaVersion: 1,
+      schemaVersion: 2,
       photosIncluded: false,
       exportedAt: new Date().toISOString(),
       settings,
       records: records.map((record) => ({ ...record, photoIds: [] })),
-      photos: []
+      photos: [],
+      metabolismProfile: metabolismProfile ?? null,
+      metabolismEntries
     };
   }
 
@@ -432,12 +728,14 @@ export async function createBackup(
 
   return {
     app: APP_NAME,
-    schemaVersion: 1,
+    schemaVersion: 2,
     photosIncluded: true,
     exportedAt: new Date().toISOString(),
     settings,
     records,
-    photos: backupPhotos
+    photos: backupPhotos,
+    metabolismProfile: metabolismProfile ?? null,
+    metabolismEntries
   };
 }
 
@@ -483,17 +781,24 @@ export async function importBackup(
   let recordsImported = backup.records.length;
   let recordsSkipped = 0;
   let photosImported = photoAssets.length;
+  let metabolismEntriesImported = backup.metabolismEntries.length;
+  let metabolismEntriesSkipped = 0;
+  let metabolismProfileImported = Boolean(backup.metabolismProfile);
 
   await db.transaction(
     "rw",
     db.records,
     db.photos,
     db.settings,
+    db.metabolismProfiles,
+    db.dailyMetabolismEntries,
     async () => {
       if (mode === "replace") {
         await db.photos.clear();
         await db.records.clear();
         await db.settings.clear();
+        await db.metabolismProfiles.clear();
+        await db.dailyMetabolismEntries.clear();
         if (backup.records.length > 0) {
           await db.records.bulkPut(backup.records);
         }
@@ -501,6 +806,12 @@ export async function importBackup(
           await db.photos.bulkPut(photoAssets);
         }
         await db.settings.put(backup.settings);
+        if (backup.metabolismProfile) {
+          await db.metabolismProfiles.put(backup.metabolismProfile);
+        }
+        if (backup.metabolismEntries.length > 0) {
+          await db.dailyMetabolismEntries.bulkPut(backup.metabolismEntries);
+        }
       } else {
         const existingRecords = await db.records.bulkGet(
           backup.records.map((record) => record.id)
@@ -565,6 +876,37 @@ export async function importBackup(
         ) {
           await db.settings.put(backup.settings);
         }
+
+        const currentProfile = await db.metabolismProfiles.get("metabolism");
+        const shouldImportProfile =
+          backup.metabolismProfile != null &&
+          (!currentProfile ||
+            Date.parse(backup.metabolismProfile.updatedAt) >
+              Date.parse(currentProfile.updatedAt));
+        metabolismProfileImported = shouldImportProfile;
+        if (shouldImportProfile && backup.metabolismProfile) {
+          await db.metabolismProfiles.put(backup.metabolismProfile);
+        }
+
+        const currentMetabolismEntries =
+          await db.dailyMetabolismEntries.bulkGet(
+            backup.metabolismEntries.map((entry) => entry.id)
+          );
+        const incomingMetabolismEntries = backup.metabolismEntries.filter(
+          (entry, index) => {
+            const current = currentMetabolismEntries[index];
+            return (
+              !current ||
+              Date.parse(entry.updatedAt) > Date.parse(current.updatedAt)
+            );
+          }
+        );
+        metabolismEntriesImported = incomingMetabolismEntries.length;
+        metabolismEntriesSkipped =
+          backup.metabolismEntries.length - incomingMetabolismEntries.length;
+        if (incomingMetabolismEntries.length > 0) {
+          await db.dailyMetabolismEntries.bulkPut(incomingMetabolismEntries);
+        }
       }
     }
   );
@@ -573,7 +915,10 @@ export async function importBackup(
     mode,
     recordsImported,
     recordsSkipped,
-    photosImported
+    photosImported,
+    metabolismEntriesImported,
+    metabolismEntriesSkipped,
+    metabolismProfileImported
   };
 }
 

@@ -39,6 +39,45 @@ export function toDateTimeLocalValue(
   return local.toISOString().slice(0, 16);
 }
 
+export function composeDateTimeLocalValue(
+  dateValue: string,
+  hourValue: string,
+  preservedMinute: string
+): string {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+  if (!dateMatch) {
+    throw new Error("먹은 날짜를 확인해주세요.");
+  }
+
+  const [, year, month, day] = dateMatch;
+  const calendarDate = new Date(
+    Date.UTC(Number(year), Number(month) - 1, Number(day))
+  );
+  if (
+    calendarDate.getUTCFullYear() !== Number(year) ||
+    calendarDate.getUTCMonth() !== Number(month) - 1 ||
+    calendarDate.getUTCDate() !== Number(day)
+  ) {
+    throw new Error("먹은 날짜를 확인해주세요.");
+  }
+
+  const hour = Number(hourValue);
+  const minute = Number(preservedMinute);
+  if (
+    !Number.isInteger(hour) ||
+    hour < 0 ||
+    hour > 23 ||
+    !/^\d{2}$/.test(preservedMinute) ||
+    !Number.isInteger(minute) ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    throw new Error("먹은 시각을 확인해주세요.");
+  }
+
+  return `${dateValue}T${String(hour).padStart(2, "0")}:${preservedMinute}`;
+}
+
 export function fromDateTimeLocalValue(
   value: string,
   timezoneOffsetMinutes?: number
@@ -95,9 +134,7 @@ export function formatRecordTime(
 ): string {
   const utc = new Date(consumedAt).getTime();
   const wallClock = new Date(utc - timezoneOffsetMinutes * 60_000);
-  return `${String(wallClock.getUTCHours()).padStart(2, "0")}:${String(
-    wallClock.getUTCMinutes()
-  ).padStart(2, "0")}`;
+  return `${wallClock.getUTCHours()}시`;
 }
 
 export function formatRecordDateTime(
@@ -110,9 +147,6 @@ export function formatRecordDateTime(
     timeZone: "UTC",
     month: "long",
     day: "numeric",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  }).format(wallClock);
+    weekday: "short"
+  }).format(wallClock) + ` ${wallClock.getUTCHours()}시`;
 }
