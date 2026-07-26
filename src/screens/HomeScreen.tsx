@@ -10,18 +10,12 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import CalendarSheet from "../components/CalendarSheet";
-import GoalDashboard, {
-  type GoalBasis,
-  type SaveGoalInput
-} from "../components/GoalDashboard";
 import {
   formatKcal,
   formatMacroLine,
   formatRecordTime
 } from "../lib/format";
 import type { DailyTotals, FoodRecord } from "../types";
-import type { GoalSettings } from "../lib/goalHistory";
-import type { TdeeRecommendationChange } from "../lib/goals";
 
 interface HomeScreenProps {
   selectedDay: string;
@@ -30,18 +24,12 @@ interface HomeScreenProps {
   isToday: boolean;
   records: FoodRecord[];
   totals: DailyTotals;
-  totalsByDate: Readonly<Record<string, DailyTotals>>;
   photoUrls: Record<string, string>;
   dietRecordDays: readonly string[];
   metabolismRecordDays: readonly string[];
-  goalSettings?: GoalSettings;
-  goalBasis?: GoalBasis;
-  goalRecommendationChange?: TdeeRecommendationChange;
   onPreviousDate: () => void;
   onNextDate: () => void;
   onSelectDate: (dayKey: string) => void;
-  onSaveGoal: (input: SaveGoalInput) => void | Promise<void>;
-  onOpenMetabolism: () => void;
   onOpenSettings: () => void;
   onAddRecord: () => void;
   onOpenRecord: (id: string) => void;
@@ -54,18 +42,12 @@ export default function HomeScreen({
   isToday,
   records,
   totals,
-  totalsByDate,
   photoUrls,
   dietRecordDays,
   metabolismRecordDays,
-  goalSettings,
-  goalBasis,
-  goalRecommendationChange,
   onPreviousDate,
   onNextDate,
   onSelectDate,
-  onSaveGoal,
-  onOpenMetabolism,
   onOpenSettings,
   onAddRecord,
   onOpenRecord
@@ -132,18 +114,6 @@ export default function HomeScreen({
         </div>
         <p>{formatMacroLine(totals)}</p>
       </section>
-
-      <GoalDashboard
-        selectedDay={selectedDay}
-        todayDay={todayDay}
-        selectedTotals={totals}
-        totalsByDate={totalsByDate}
-        goalSettings={goalSettings}
-        currentBasis={goalBasis}
-        recommendationChange={goalRecommendationChange}
-        onSaveGoal={onSaveGoal}
-        onOpenMetabolism={onOpenMetabolism}
-      />
 
       <section className="timeline" aria-labelledby="timeline-title">
         <div className="section-heading">

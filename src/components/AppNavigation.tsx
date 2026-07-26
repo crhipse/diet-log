@@ -1,6 +1,6 @@
-import { Flame, Utensils } from "lucide-react";
+import { Flame, Target, Utensils } from "lucide-react";
 
-export type PrimarySection = "diet" | "metabolism";
+export type PrimarySection = "diet" | "goal" | "metabolism";
 
 interface AppNavigationProps {
   active: PrimarySection;
@@ -21,6 +21,15 @@ export default function AppNavigation({
       >
         <Utensils size={19} aria-hidden="true" />
         <span>식단</span>
+      </button>
+      <button
+        className={active === "goal" ? "is-active" : ""}
+        type="button"
+        aria-current={active === "goal" ? "page" : undefined}
+        onClick={() => onChange("goal")}
+      >
+        <Target size={19} aria-hidden="true" />
+        <span>목표</span>
       </button>
       <button
         className={active === "metabolism" ? "is-active" : ""}

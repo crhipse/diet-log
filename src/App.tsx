@@ -2,6 +2,7 @@ import { LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppNavigation from "./components/AppNavigation";
 import type { SaveGoalInput } from "./components/GoalDashboard";
+import GoalScreen from "./screens/GoalScreen";
 import HomeScreen from "./screens/HomeScreen";
 import MetabolismScreen from "./screens/MetabolismScreen";
 import RecordDetailScreen from "./screens/RecordDetailScreen";
@@ -72,10 +73,11 @@ import type {
 
 type Screen =
   | { name: "home" }
+  | { name: "goal" }
   | { name: "metabolism" }
   | { name: "editor"; recordId?: string }
   | { name: "detail"; recordId: string }
-  | { name: "settings"; from?: "home" | "metabolism" };
+  | { name: "settings"; from?: "home" | "goal" | "metabolism" };
 
 interface ToastState {
   id: number;
@@ -871,21 +873,37 @@ export default function App() {
           isToday={selectedDay === todayDay}
           records={dayRecords}
           totals={dailyTotals}
-          totalsByDate={totalsByDate}
           photoUrls={homePhotoUrls}
           dietRecordDays={dietRecordDays}
           metabolismRecordDays={metabolismRecordDays}
+          onPreviousDate={() => setSelectedDay(addDays(selectedDay, -1))}
+          onNextDate={() => setSelectedDay(addDays(selectedDay, 1))}
+          onSelectDate={setSelectedDay}
+          onOpenSettings={() => setScreen({ name: "settings", from: "home" })}
+          onAddRecord={() => void openEditor()}
+          onOpenRecord={(recordId) => setScreen({ name: "detail", recordId })}
+        />
+      )}
+
+      {screen.name === "goal" && (
+        <GoalScreen
+          selectedDay={selectedDay}
+          todayDay={todayDay}
+          dateLabel={formatDayLabel(selectedDay)}
+          isToday={selectedDay === todayDay}
+          dietRecordDays={dietRecordDays}
+          metabolismRecordDays={metabolismRecordDays}
+          totals={dailyTotals}
+          totalsByDate={totalsByDate}
           goalSettings={settings.goalSettings}
           goalBasis={goalBasis}
-          goalRecommendationChange={goalRecommendationChange}
+          recommendationChange={goalRecommendationChange}
           onPreviousDate={() => setSelectedDay(addDays(selectedDay, -1))}
           onNextDate={() => setSelectedDay(addDays(selectedDay, 1))}
           onSelectDate={setSelectedDay}
           onSaveGoal={saveGoal}
           onOpenMetabolism={() => setScreen({ name: "metabolism" })}
-          onOpenSettings={() => setScreen({ name: "settings", from: "home" })}
-          onAddRecord={() => void openEditor()}
-          onOpenRecord={(recordId) => setScreen({ name: "detail", recordId })}
+          onOpenSettings={() => setScreen({ name: "settings", from: "goal" })}
         />
       )}
 
@@ -980,7 +998,9 @@ export default function App() {
             setScreen(
               screen.from === "metabolism"
                 ? { name: "metabolism" }
-                : { name: "home" }
+                : screen.from === "goal"
+                  ? { name: "goal" }
+                  : { name: "home" }
             )
           }
           onSaveApiKey={updateApiKey}
@@ -996,21 +1016,34 @@ export default function App() {
         />
       )}
 
-      {(screen.name === "home" || screen.name === "metabolism") && (
+      {(screen.name === "home" ||
+        screen.name === "goal" ||
+        screen.name === "metabolism") && (
         <AppNavigation
-          active={screen.name === "home" ? "diet" : "metabolism"}
+          active={
+            screen.name === "home"
+              ? "diet"
+              : screen.name === "goal"
+                ? "goal"
+                : "metabolism"
+          }
           onChange={(section) => {
             if (
               screen.name === "metabolism" &&
-              section === "diet" &&
+              section !== "metabolism" &&
               metabolismDirty &&
               !window.confirm(
-                "저장하지 않은 대사량 입력이 있습니다. 변경사항을 버리고 식단 화면으로 이동할까요?"
+                `저장하지 않은 대사량 입력이 있습니다. 변경사항을 버리고 ${
+                  section === "diet" ? "식단" : "목표"
+                } 화면으로 이동할까요?`
               )
             ) {
               return;
             }
-            if (screen.name === "metabolism" && section === "diet") {
+            if (
+              screen.name === "metabolism" &&
+              section !== "metabolism"
+            ) {
               setMetabolismDirty(false);
             }
             if (
@@ -1020,7 +1053,11 @@ export default function App() {
               setSelectedDay(getTodayDayKey(settings.dayStartHour));
             }
             setScreen(
-              section === "diet" ? { name: "home" } : { name: "metabolism" }
+              section === "diet"
+                ? { name: "home" }
+                : section === "goal"
+                  ? { name: "goal" }
+                  : { name: "metabolism" }
             );
           }}
         />

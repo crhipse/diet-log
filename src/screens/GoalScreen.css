@@ -1,0 +1,26 @@
+.goal-screen {
+  padding-bottom: calc(108px + env(safe-area-inset-bottom));
+}
+
+.goal-screen > .goal-empty-card,
+.goal-screen > .goal-dashboard {
+  margin-top: 0;
+}
+
+.goal-screen > .goal-empty-card:last-of-type,
+.goal-screen > .goal-dashboard:last-of-type {
+  margin-bottom: 18px;
+}
+
+@media (min-width: 560px) {
+  .goal-screen {
+    padding-bottom: 108px;
+  }
+}
+
+@media (max-width: 360px) {
+  .goal-screen .date-navigation {
+    padding-right: 15px;
+    padding-left: 15px;
+  }
+}
