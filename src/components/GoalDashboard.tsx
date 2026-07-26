@@ -417,13 +417,14 @@ function WeekOverview({
     (sum, day) => sum + (day.target?.dailyCalories.targetKcal ?? 0),
     0
   );
-  const proteinRecordedDays = elapsed.filter(
-    (day) => day.totals?.proteinG != null
+  const actualProtein = elapsed.reduce(
+    (sum, day) => sum + (day.totals?.proteinG ?? 0),
+    0
   );
-  const proteinMet = proteinRecordedDays.filter(
-    (day) =>
-      (day.totals?.proteinG ?? 0) >= (day.target?.proteinMinimumG ?? Infinity)
-  ).length;
+  const targetProtein = eligible.reduce(
+    (sum, day) => sum + (day.target?.proteinMinimumG ?? 0),
+    0
+  );
   const missingElapsedDays = elapsed.filter(
     (day) => day.totals == null
   ).length;
@@ -454,7 +455,7 @@ function WeekOverview({
       <div className="goal-week__heading">
         <div>
           <strong>주간 목표</strong>
-          <span>칼로리는 일주일 안에서 유연하게 조절할 수 있어요.</span>
+          <span>칼로리와 단백질의 주간 누적을 확인해요.</span>
         </div>
         <b>{summary}</b>
       </div>
@@ -529,7 +530,8 @@ function WeekOverview({
         <span>
           단백질{" "}
           <strong>
-            {proteinMet}/{proteinRecordedDays.length}기록일 달성
+            {Math.round(actualProtein).toLocaleString("ko-KR")} /{" "}
+            {Math.round(targetProtein).toLocaleString("ko-KR")}g
           </strong>
         </span>
         {missingElapsedDays > 0 && <span>{missingElapsedDays}일 미기록</span>}

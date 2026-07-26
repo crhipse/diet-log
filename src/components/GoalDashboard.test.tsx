@@ -210,3 +210,58 @@ test("주간 요약에서 기록 없음과 영양성분 일부 누락을 구분�
   expect(screen.queryByText("2일 미기록")).not.toBeInTheDocument();
   expect(screen.getAllByText("1일 미기록")).toHaveLength(2);
 });
+
+test("주간 단백질을 달성 일수가 아닌 누적 섭취량과 목표량으로 표시한다", () => {
+  const makeTotals = (proteinG: number) => ({
+    ...EMPTY_NUTRIENTS,
+    energyKcal: 1_800,
+    proteinG,
+    hasMissingCoreValues: false
+  });
+  const monday = makeTotals(60);
+  const tuesday = makeTotals(120);
+  const wednesday = makeTotals(70);
+  const goalSettings: GoalSettings = {
+    updatedAt: "2026-07-20T00:00:00.000Z",
+    targets: [
+      {
+        id: "goal-weekly-protein",
+        effectiveFrom: "2026-07-20",
+        plan: {
+          goalType: "maintenance_recomp",
+          pace: "moderate",
+          resistanceTrainingDaysPerWeek: 3
+        },
+        tdeeKcal: 2200,
+        weightKg: 70,
+        tdeeSource: "detailed",
+        dailyCalories: {
+          minKcal: 2100,
+          targetKcal: 2200,
+          maxKcal: 2300
+        },
+        proteinMinimumG: 100,
+        createdAt: "2026-07-20T00:00:00.000Z"
+      }
+    ]
+  };
+
+  render(
+    <GoalDashboard
+      selectedDay="2026-07-22"
+      todayDay="2026-07-22"
+      selectedTotals={wednesday}
+      totalsByDate={{
+        "2026-07-20": monday,
+        "2026-07-21": tuesday,
+        "2026-07-22": wednesday
+      }}
+      goalSettings={goalSettings}
+      onSaveGoal={vi.fn()}
+      onOpenMetabolism={vi.fn()}
+    />
+  );
+
+  expect(screen.getByText("250 / 700g")).toBeInTheDocument();
+  expect(screen.queryByText(/기록일 달성/)).not.toBeInTheDocument();
+});
