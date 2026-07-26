@@ -17,6 +17,8 @@ interface DecodedImage extends ImageDimensions {
 }
 
 const WEBP_MEDIA_TYPE = "image/webp";
+const JPEG_MEDIA_TYPE = "image/jpeg";
+const JPEG_FALLBACK_QUALITY = 0.82;
 
 export function calculateContainedSize(
   sourceWidth: number,
@@ -66,11 +68,22 @@ export function assertPhotoLimit(
 }
 
 export async function compressImage(file: File): Promise<PendingPhoto> {
-  if (!file.type.toLowerCase().startsWith("image/")) {
+  const sourceMediaType = normalizeMediaType(file.type);
+  if (sourceMediaType && !sourceMediaType.startsWith("image/")) {
     throw new Error("이미지 파일만 추가할 수 있습니다.");
   }
 
-  const decoded = await decodeImage(file);
+  let decoded: DecodedImage;
+  try {
+    decoded = await decodeImage(file);
+  } catch (error) {
+    if (isHeicFile(file)) {
+      throw new Error(
+        "이 HEIC/HEIF 사진을 열지 못했습니다. 기기를 업데이트하거나 사진을 스크린샷으로 저장한 뒤 다시 선택해 주세요."
+      );
+    }
+    throw error;
+  }
   const dimensions = calculateContainedSize(decoded.width, decoded.height);
   let canvas: HTMLCanvasElement | undefined;
 
@@ -92,10 +105,7 @@ export async function compressImage(file: File): Promise<PendingPhoto> {
       dimensions.height
     );
 
-    const blob = await canvasToBlob(canvas, WEBP_MEDIA_TYPE, IMAGE_QUALITY);
-    if (normalizeMediaType(blob.type) !== WEBP_MEDIA_TYPE) {
-      throw new Error("이 브라우저에서는 WebP 사진 압축을 지원하지 않습니다.");
-    }
+    const blob = await encodeCanvasPhoto(canvas);
 
     return {
       id: createId("photo"),
@@ -123,8 +133,18 @@ export async function compressImages(
   try {
     // Mobile devices can run out of memory if several full-size photos are decoded
     // at once, so process them sequentially.
-    for (const file of files) {
-      photos.push(await compressImage(file));
+    for (const [index, file] of files.entries()) {
+      try {
+        photos.push(await compressImage(file));
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "사진을 불러오지 못했습니다.";
+        throw new Error(
+          files.length > 1 ? `${index + 1}번째 사진: ${message}` : message
+        );
+      }
     }
     return photos;
   } catch (error) {
@@ -232,6 +252,15 @@ function normalizeMediaType(mediaType: string): string {
   return mediaType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
 }
 
+function isHeicFile(file: File): boolean {
+  const mediaType = normalizeMediaType(file.type);
+  return (
+    mediaType === "image/heic" ||
+    mediaType === "image/heif" ||
+    /\.(?:heic|heif)$/i.test(file.name)
+  );
+}
+
 async function decodeImage(blob: Blob): Promise<DecodedImage> {
   if (typeof createImageBitmap === "function") {
     try {
@@ -284,20 +313,44 @@ function decodeWithImageElement(blob: Blob): Promise<DecodedImage> {
   });
 }
 
+async function encodeCanvasPhoto(canvas: HTMLCanvasElement): Promise<Blob> {
+  const formats = [
+    { mediaType: WEBP_MEDIA_TYPE, quality: IMAGE_QUALITY },
+    { mediaType: JPEG_MEDIA_TYPE, quality: JPEG_FALLBACK_QUALITY }
+  ] as const;
+
+  for (const format of formats) {
+    try {
+      const blob = await canvasToBlob(
+        canvas,
+        format.mediaType,
+        format.quality
+      );
+      if (
+        blob &&
+        normalizeMediaType(blob.type) === format.mediaType
+      ) {
+        return blob;
+      }
+    } catch {
+      // Encoding support differs between mobile browsers. Try the next
+      // broadly supported format instead of rejecting the selected photo.
+    }
+  }
+
+  throw new Error(
+    "사진을 저장 가능한 형식으로 압축하지 못했습니다. 다른 사진으로 다시 시도해 주세요."
+  );
+}
+
 function canvasToBlob(
   canvas: HTMLCanvasElement,
   mediaType: string,
   quality: number
-): Promise<Blob> {
-  return new Promise((resolve, reject) => {
+): Promise<Blob | null> {
+  return new Promise((resolve) => {
     canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          resolve(blob);
-        } else {
-          reject(new Error("사진 압축에 실패했습니다."));
-        }
-      },
+      (blob) => resolve(blob),
       mediaType,
       quality
     );
