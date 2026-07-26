@@ -42,6 +42,22 @@ import {
   validateDateKey,
   validateMetabolismProfile
 } from "./metabolism";
+import type {
+  GoalPlan,
+  GoalPace,
+  GoalType
+} from "./goals";
+import { GOAL_SAFETY_LIMITS, validateGoalPlan } from "./goals";
+import type {
+  GoalSettings,
+  GoalTargetSnapshot,
+  GoalTdeeSource
+} from "./goalHistory";
+import {
+  MAX_GOAL_TARGETS,
+  mergeGoalSettings,
+  validateGoalSettings
+} from "./goalHistory";
 
 export type ImportMode = "merge" | "replace";
 
@@ -88,6 +104,19 @@ const EXERCISE_INTENSITIES = new Set<ExerciseIntensity>([
   "low",
   "moderate",
   "high"
+]);
+const GOAL_TYPES = new Set<GoalType>([
+  "fat_loss",
+  "maintenance_recomp",
+  "lean_mass_gain",
+  "bulk",
+  "custom"
+]);
+const GOAL_PACES = new Set<GoalPace>(["gentle", "moderate", "fast"]);
+const GOAL_TDEE_SOURCES = new Set<GoalTdeeSource>([
+  "personalized",
+  "detailed",
+  "manual"
 ]);
 const IMAGE_DATA_URL_PATTERN =
   /^data:image\/(?:jpeg|png|webp|gif|avif);base64,[a-z0-9+/]*={0,2}$/i;
@@ -301,8 +330,157 @@ function settingsAt(value: unknown, path: string): AppSettings {
       max: 23
     }) as number,
     modelId: stringAt(item.modelId, `${path}.modelId`, { maxLength: 200 }),
+    goalSettings:
+      item.goalSettings == null
+        ? undefined
+        : goalSettingsAt(item.goalSettings, `${path}.goalSettings`),
     updatedAt: isoDateAt(item.updatedAt, `${path}.updatedAt`)
   };
+}
+
+function goalPlanAt(value: unknown, path: string): GoalPlan {
+  const item = objectAt(value, path);
+  const goalType = stringAt(item.goalType, `${path}.goalType`) as GoalType;
+  const pace = stringAt(item.pace, `${path}.pace`) as GoalPace;
+  if (!GOAL_TYPES.has(goalType)) {
+    invalid(`${path}.goalType`, "알 수 없는 목표 유형입니다.");
+  }
+  if (!GOAL_PACES.has(pace)) {
+    invalid(`${path}.pace`, "알 수 없는 목표 속도입니다.");
+  }
+  const plan: GoalPlan = {
+    goalType,
+    pace,
+    resistanceTrainingDaysPerWeek: finiteNumberAt(
+      item.resistanceTrainingDaysPerWeek,
+      `${path}.resistanceTrainingDaysPerWeek`,
+      { integer: true, min: 0, max: 7 }
+    ) as number,
+    targetWeightKg:
+      item.targetWeightKg == null
+        ? undefined
+        : (finiteNumberAt(item.targetWeightKg, `${path}.targetWeightKg`, {
+            min: 30,
+            max: 350
+          }) as number),
+    targetDate:
+      item.targetDate == null
+        ? undefined
+        : dateKeyAt(item.targetDate, `${path}.targetDate`),
+    customDailyKcal:
+      item.customDailyKcal == null
+        ? undefined
+        : (finiteNumberAt(item.customDailyKcal, `${path}.customDailyKcal`, {
+            min: GOAL_SAFETY_LIMITS.minimumValidTdeeKcal,
+            max: GOAL_SAFETY_LIMITS.maximumValidTdeeKcal
+          }) as number),
+    customProteinMinimumG:
+      item.customProteinMinimumG == null
+        ? undefined
+        : (finiteNumberAt(
+            item.customProteinMinimumG,
+            `${path}.customProteinMinimumG`,
+            { min: 1, max: 500 }
+          ) as number)
+  };
+  try {
+    validateGoalPlan(plan);
+  } catch (error) {
+    invalid(
+      path,
+      error instanceof Error ? error.message : "목표 설정이 올바르지 않습니다."
+    );
+  }
+  return plan;
+}
+
+function goalTargetAt(value: unknown, path: string): GoalTargetSnapshot {
+  const item = objectAt(value, path);
+  const tdeeSource = stringAt(
+    item.tdeeSource,
+    `${path}.tdeeSource`
+  ) as GoalTdeeSource;
+  if (!GOAL_TDEE_SOURCES.has(tdeeSource)) {
+    invalid(`${path}.tdeeSource`, "알 수 없는 TDEE 출처입니다.");
+  }
+  const calories = objectAt(item.dailyCalories, `${path}.dailyCalories`);
+  return {
+    id: stringAt(item.id, `${path}.id`, { maxLength: 100 }),
+    effectiveFrom: dateKeyAt(
+      item.effectiveFrom,
+      `${path}.effectiveFrom`
+    ),
+    plan: goalPlanAt(item.plan, `${path}.plan`),
+    tdeeKcal: finiteNumberAt(item.tdeeKcal, `${path}.tdeeKcal`, {
+      min: GOAL_SAFETY_LIMITS.minimumValidTdeeKcal,
+      max: GOAL_SAFETY_LIMITS.maximumValidTdeeKcal
+    }) as number,
+    weightKg: finiteNumberAt(item.weightKg, `${path}.weightKg`, {
+      min: 30,
+      max: 350
+    }) as number,
+    tdeeSource,
+    dailyCalories: {
+      minKcal: finiteNumberAt(
+        calories.minKcal,
+        `${path}.dailyCalories.minKcal`,
+        {
+          min: GOAL_SAFETY_LIMITS.absoluteMinimumDailyKcal,
+          max: GOAL_SAFETY_LIMITS.maximumValidTdeeKcal
+        }
+      ) as number,
+      targetKcal: finiteNumberAt(
+        calories.targetKcal,
+        `${path}.dailyCalories.targetKcal`,
+        {
+          min: GOAL_SAFETY_LIMITS.absoluteMinimumDailyKcal,
+          max: GOAL_SAFETY_LIMITS.maximumValidTdeeKcal
+        }
+      ) as number,
+      maxKcal: finiteNumberAt(
+        calories.maxKcal,
+        `${path}.dailyCalories.maxKcal`,
+        {
+          min: GOAL_SAFETY_LIMITS.absoluteMinimumDailyKcal,
+          max: GOAL_SAFETY_LIMITS.maximumValidTdeeKcal
+        }
+      ) as number
+    },
+    proteinMinimumG: finiteNumberAt(
+      item.proteinMinimumG,
+      `${path}.proteinMinimumG`,
+      { min: 1, max: 500 }
+    ) as number,
+    createdAt: isoDateAt(item.createdAt, `${path}.createdAt`)
+  };
+}
+
+function goalSettingsAt(value: unknown, path: string): GoalSettings {
+  const item = objectAt(value, path);
+  if (!Array.isArray(item.targets)) {
+    invalid(`${path}.targets`, "목록이어야 합니다.");
+  }
+  if (item.targets.length > MAX_GOAL_TARGETS) {
+    invalid(
+      `${path}.targets`,
+      `최대 ${MAX_GOAL_TARGETS}개까지 허용됩니다.`
+    );
+  }
+  const settings: GoalSettings = {
+    targets: item.targets.map((target, index) =>
+      goalTargetAt(target, `${path}.targets[${index}]`)
+    ),
+    updatedAt: isoDateAt(item.updatedAt, `${path}.updatedAt`)
+  };
+  try {
+    validateGoalSettings(settings);
+  } catch (error) {
+    invalid(
+      path,
+      error instanceof Error ? error.message : "목표 이력이 올바르지 않습니다."
+    );
+  }
+  return settings;
 }
 
 function dateKeyAt(value: unknown, path: string): string {
@@ -869,12 +1047,29 @@ export async function importBackup(
         }
 
         const currentSettings = await db.settings.get("app");
-        if (
-          !currentSettings ||
-          Date.parse(backup.settings.updatedAt) >
-            Date.parse(currentSettings.updatedAt)
-        ) {
+        if (!currentSettings) {
           await db.settings.put(backup.settings);
+        } else {
+          const incomingIsNewer =
+            Date.parse(backup.settings.updatedAt) >
+            Date.parse(currentSettings.updatedAt);
+          const baseSettings = incomingIsNewer
+            ? backup.settings
+            : currentSettings;
+          const mergedGoals = mergeGoalSettings(
+            currentSettings.goalSettings,
+            backup.settings.goalSettings
+          );
+          await db.settings.put({
+            ...baseSettings,
+            goalSettings: mergedGoals,
+            updatedAt:
+              mergedGoals &&
+              Date.parse(mergedGoals.updatedAt) >
+                Date.parse(baseSettings.updatedAt)
+                ? mergedGoals.updatedAt
+                : baseSettings.updatedAt
+          });
         }
 
         const currentProfile = await db.metabolismProfiles.get("metabolism");

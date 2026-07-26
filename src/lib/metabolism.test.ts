@@ -25,14 +25,14 @@ function profile(
     heightCm: 180,
     jobTemplates: [
       {
-        id: "doctor",
-        name: "피부과 진료",
+        id: "office",
+        name: "사무·재택",
         activityType: "standing",
         defaultHours: 8
       },
       {
-        id: "investor",
-        name: "외부 탐방",
+        id: "sales",
+        name: "외근·영업",
         activityType: "walking",
         defaultHours: 5
       }
@@ -192,16 +192,16 @@ describe("활동대사량 계산", () => {
       entry("2026-07-26", {
         jobActivities: [
           {
-            id: "clinic",
-            templateId: "doctor",
-            name: "피부과 진료",
+            id: "office-work",
+            templateId: "office",
+            name: "사무·재택",
             activityType: "seated",
             hours: 8
           },
           {
-            id: "field-trip",
-            templateId: "investor",
-            name: "기업 탐방",
+            id: "sales-work",
+            templateId: "sales",
+            name: "외근·영업",
             activityType: "walking",
             hours: 4
           }
@@ -222,8 +222,8 @@ describe("활동대사량 계산", () => {
         steps: 10_000,
         jobActivities: [
           {
-            id: "clinic",
-            name: "피부과 진료",
+            id: "service-work",
+            name: "서비스·교육",
             activityType: "standing",
             hours: 4
           }
@@ -254,13 +254,13 @@ describe("활동대사량 계산", () => {
           jobActivities: [
             {
               id: "a",
-              name: "진료",
+              name: "서비스·교육",
               activityType: "standing",
               hours: 13
             },
             {
               id: "b",
-              name: "탐방",
+              name: "외근·영업",
               activityType: "walking",
               hours: 12
             }
@@ -276,8 +276,8 @@ describe("활동대사량 계산", () => {
         entry("2026-07-26", {
           jobActivities: [
             {
-              id: "clinic",
-              name: "진료",
+              id: "service-work",
+              name: "서비스·교육",
               activityType: "standing",
               hours: 20
             }

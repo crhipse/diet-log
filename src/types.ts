@@ -1,3 +1,5 @@
+import type { GoalSettings } from "./lib/goalHistory";
+
 export type AnalysisStatus =
   | "not_requested"
   | "pending"
@@ -64,6 +66,7 @@ export interface AppSettings {
   id: "app";
   dayStartHour: number;
   modelId: string;
+  goalSettings?: GoalSettings;
   updatedAt: string;
 }
 

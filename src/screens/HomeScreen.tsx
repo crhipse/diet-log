@@ -1,5 +1,6 @@
 import {
   AlertCircle,
+  CalendarDays,
   Camera,
   ChevronLeft,
   ChevronRight,
@@ -7,40 +8,70 @@ import {
   Plus,
   Settings
 } from "lucide-react";
+import { useState } from "react";
+import CalendarSheet from "../components/CalendarSheet";
+import GoalDashboard, {
+  type GoalBasis,
+  type SaveGoalInput
+} from "../components/GoalDashboard";
 import {
   formatKcal,
   formatMacroLine,
   formatRecordTime
 } from "../lib/format";
 import type { DailyTotals, FoodRecord } from "../types";
+import type { GoalSettings } from "../lib/goalHistory";
+import type { TdeeRecommendationChange } from "../lib/goals";
 
 interface HomeScreenProps {
+  selectedDay: string;
+  todayDay: string;
   dateLabel: string;
   isToday: boolean;
   records: FoodRecord[];
   totals: DailyTotals;
+  totalsByDate: Readonly<Record<string, DailyTotals>>;
   photoUrls: Record<string, string>;
+  dietRecordDays: readonly string[];
+  metabolismRecordDays: readonly string[];
+  goalSettings?: GoalSettings;
+  goalBasis?: GoalBasis;
+  goalRecommendationChange?: TdeeRecommendationChange;
   onPreviousDate: () => void;
   onNextDate: () => void;
-  onToday: () => void;
+  onSelectDate: (dayKey: string) => void;
+  onSaveGoal: (input: SaveGoalInput) => void | Promise<void>;
+  onOpenMetabolism: () => void;
   onOpenSettings: () => void;
   onAddRecord: () => void;
   onOpenRecord: (id: string) => void;
 }
 
 export default function HomeScreen({
+  selectedDay,
+  todayDay,
   dateLabel,
   isToday,
   records,
   totals,
+  totalsByDate,
   photoUrls,
+  dietRecordDays,
+  metabolismRecordDays,
+  goalSettings,
+  goalBasis,
+  goalRecommendationChange,
   onPreviousDate,
   onNextDate,
-  onToday,
+  onSelectDate,
+  onSaveGoal,
+  onOpenMetabolism,
   onOpenSettings,
   onAddRecord,
   onOpenRecord
 }: HomeScreenProps) {
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
   return (
     <main className="screen home-screen">
       <header className="topbar">
@@ -67,14 +98,23 @@ export default function HomeScreen({
         >
           <ChevronLeft size={22} aria-hidden="true" />
         </button>
-        <button className="date-navigation__label" type="button" onClick={onToday}>
+        <button
+          className="date-navigation__label"
+          type="button"
+          aria-label={`${dateLabel}, 달력 열기`}
+          onClick={() => setCalendarOpen(true)}
+        >
           <span>{dateLabel}</span>
-          {!isToday && <small>오늘로 이동</small>}
+          <small>
+            <CalendarDays size={12} aria-hidden="true" />
+            달력에서 찾기
+          </small>
         </button>
         <button
           className="icon-button icon-button--ghost"
           type="button"
           aria-label="다음 날짜"
+          disabled={isToday}
           onClick={onNextDate}
         >
           <ChevronRight size={22} aria-hidden="true" />
@@ -92,6 +132,18 @@ export default function HomeScreen({
         </div>
         <p>{formatMacroLine(totals)}</p>
       </section>
+
+      <GoalDashboard
+        selectedDay={selectedDay}
+        todayDay={todayDay}
+        selectedTotals={totals}
+        totalsByDate={totalsByDate}
+        goalSettings={goalSettings}
+        currentBasis={goalBasis}
+        recommendationChange={goalRecommendationChange}
+        onSaveGoal={onSaveGoal}
+        onOpenMetabolism={onOpenMetabolism}
+      />
 
       <section className="timeline" aria-labelledby="timeline-title">
         <div className="section-heading">
@@ -178,6 +230,17 @@ export default function HomeScreen({
       >
         <Plus size={25} aria-hidden="true" />
       </button>
+
+      {calendarOpen && (
+        <CalendarSheet
+          selectedDay={selectedDay}
+          todayDay={todayDay}
+          dietRecordDays={dietRecordDays}
+          metabolismRecordDays={metabolismRecordDays}
+          onSelectDay={onSelectDate}
+          onClose={() => setCalendarOpen(false)}
+        />
+      )}
     </main>
   );
 }

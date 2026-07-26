@@ -217,6 +217,59 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.saved-height,
+.height-editor {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.saved-height {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.saved-height > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.saved-height strong {
+  font-size: 12px;
+}
+
+.saved-height small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.saved-height .secondary-button,
+.height-editor__actions .secondary-button {
+  min-height: 38px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.height-editor__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.height-editor__actions .text-button {
+  min-height: 38px;
+  font-size: 11px;
+}
+
 .metabolism-screen .field > span:first-child em {
   margin-left: 3px;
   color: var(--faint);
@@ -451,48 +504,51 @@
   line-height: 1.45;
 }
 
-.quick-add-row,
-.example-jobs {
+.quick-add-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.quick-add-label::after {
+  content: " · 좌우로 밀어 더 보기";
+  color: var(--faint);
+  font-weight: 600;
+}
+
+.quick-add-row {
   display: flex;
   overflow-x: auto;
   gap: 6px;
   margin: 0 -14px 12px;
   padding: 0 14px 3px;
-  scrollbar-width: none;
+  scrollbar-color: #c9c2b5 transparent;
+  scrollbar-width: thin;
 }
 
-.quick-add-row::-webkit-scrollbar,
-.example-jobs::-webkit-scrollbar {
-  display: none;
+.quick-add-row::-webkit-scrollbar {
+  height: 4px;
 }
 
-.quick-add-row button,
-.example-jobs button {
+.quick-add-row::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c9c2b5;
+}
+
+.quick-add-row button {
   display: inline-flex;
-  min-height: 34px;
+  min-height: 44px;
   flex: none;
   align-items: center;
   gap: 3px;
-  padding: 7px 10px;
+  padding: 9px 12px;
   border: 1px solid #ddcaba;
   border-radius: 999px;
   color: #75472f;
   background: #fdf6f0;
   font-size: 10px;
   font-weight: 730;
-}
-
-.example-jobs {
-  margin-right: -1px;
-  margin-left: -1px;
-  padding-right: 1px;
-  padding-left: 1px;
-}
-
-.example-jobs button.is-added {
-  border-color: var(--line);
-  color: var(--faint);
-  background: var(--surface-soft);
 }
 
 .today-activity-list,

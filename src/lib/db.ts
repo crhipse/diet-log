@@ -13,6 +13,8 @@ import {
   validateDateKey,
   validateMetabolismProfile
 } from "./metabolism";
+import type { GoalSettings } from "./goalHistory";
+import { validateGoalSettings } from "./goalHistory";
 
 export const DATABASE_NAME = "diet-log";
 
@@ -177,6 +179,20 @@ export async function getSettings(): Promise<AppSettings> {
     validDayStartHour(stored.dayStartHour) &&
     stored.modelId.trim()
   ) {
+    if (stored.goalSettings) {
+      try {
+        validateGoalSettings(stored.goalSettings);
+      } catch {
+        const repaired: AppSettings = {
+          id: "app",
+          dayStartHour: stored.dayStartHour,
+          modelId: stored.modelId,
+          updatedAt: new Date().toISOString()
+        };
+        await db.settings.put(repaired);
+        return repaired;
+      }
+    }
     return stored;
   }
 
@@ -207,7 +223,22 @@ export async function saveSettings(
     id: "app",
     dayStartHour,
     modelId,
+    goalSettings: current.goalSettings,
     updatedAt: new Date().toISOString()
+  };
+  await db.settings.put(next);
+  return next;
+}
+
+export async function saveGoalSettings(
+  goalSettings: GoalSettings
+): Promise<AppSettings> {
+  validateGoalSettings(goalSettings);
+  const current = await getSettings();
+  const next: AppSettings = {
+    ...current,
+    goalSettings,
+    updatedAt: goalSettings.updatedAt
   };
   await db.settings.put(next);
   return next;

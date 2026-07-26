@@ -97,6 +97,12 @@ export default function RecordEditorScreen({
   const [processingPhotos, setProcessingPhotos] = useState(false);
   const ownedPhotosRef = useRef<PendingPhoto[]>(initialPhotos);
 
+  const closeQuickKey = () => {
+    setQuickKey("");
+    setQuickRemember(false);
+    setQuickKeyOpen(false);
+  };
+
   useEffect(() => {
     ownedPhotosRef.current = photos;
   }, [photos]);
@@ -144,6 +150,8 @@ export default function RecordEditorScreen({
       return;
     }
     if (!apiKeyAvailable) {
+      setQuickKey("");
+      setQuickRemember(false);
       setQuickKeyOpen(true);
       return;
     }
@@ -508,7 +516,7 @@ export default function RecordEditorScreen({
                 className="icon-button"
                 type="button"
                 aria-label="API 키 입력 닫기"
-                onClick={() => setQuickKeyOpen(false)}
+                onClick={closeQuickKey}
               >
                 <X size={20} aria-hidden="true" />
               </button>
@@ -551,8 +559,9 @@ export default function RecordEditorScreen({
                   onNotify("API 키를 입력해주세요.", "error");
                   return;
                 }
-                onSaveApiKey(quickKey, quickRemember);
-                setQuickKeyOpen(false);
+                const nextKey = quickKey.trim();
+                onSaveApiKey(nextKey, quickRemember);
+                closeQuickKey();
                 onNotify("키를 저장했어요. AI 분석 버튼을 다시 눌러주세요.");
               }}
             >

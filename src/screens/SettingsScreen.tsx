@@ -5,8 +5,6 @@ import {
   ClipboardCopy,
   Database,
   Download,
-  Eye,
-  EyeOff,
   FileDown,
   FileUp,
   KeyRound,
@@ -24,7 +22,7 @@ type RestoreMode = "merge" | "replace";
 
 interface SettingsScreenProps {
   settings: AppSettings;
-  apiKey: string;
+  apiKeyAvailable: boolean;
   remembered: boolean;
   recordCount: number;
   metabolismRecordCount: number;
@@ -45,7 +43,7 @@ interface SettingsScreenProps {
 
 export default function SettingsScreen({
   settings,
-  apiKey,
+  apiKeyAvailable,
   remembered,
   recordCount,
   metabolismRecordCount,
@@ -63,11 +61,10 @@ export default function SettingsScreen({
   onDownloadCsv,
   onNotify
 }: SettingsScreenProps) {
-  const [keyDraft, setKeyDraft] = useState(apiKey);
+  const [keyDraft, setKeyDraft] = useState("");
   const [rememberDraft, setRememberDraft] = useState(remembered);
-  const [showKey, setShowKey] = useState(false);
+  const [editingKey, setEditingKey] = useState(!apiKeyAvailable);
   const [testingKey, setTestingKey] = useState(false);
-  const [keyTested, setKeyTested] = useState(false);
   const [modelDraft, setModelDraft] = useState(settings.modelId);
   const [dayStartDraft, setDayStartDraft] = useState(settings.dayStartHour);
   const [restoreMode, setRestoreMode] = useState<RestoreMode>("merge");
@@ -75,18 +72,33 @@ export default function SettingsScreen({
   const restoreInputRef = useRef<HTMLInputElement>(null);
 
   const saveKey = async () => {
-    if (!keyDraft.trim()) {
+    const nextKey = keyDraft.trim();
+    if (!nextKey) {
       onNotify("API 키를 입력해주세요.", "error");
       return;
     }
-    onSaveApiKey(keyDraft, rememberDraft);
     setTestingKey(true);
     try {
-      const success = await onTestApiKey(keyDraft.trim());
-      setKeyTested(success);
+      const success = await onTestApiKey(nextKey);
+      if (!success) return;
+      onSaveApiKey(nextKey, rememberDraft);
+      setKeyDraft("");
+      setEditingKey(false);
     } finally {
       setTestingKey(false);
     }
+  };
+
+  const startChangingKey = () => {
+    setKeyDraft("");
+    setRememberDraft(remembered);
+    setEditingKey(true);
+  };
+
+  const cancelChangingKey = () => {
+    setKeyDraft("");
+    setRememberDraft(remembered);
+    setEditingKey(false);
   };
 
   const savePreferences = async () => {
@@ -148,89 +160,111 @@ export default function SettingsScreen({
             </div>
           </div>
 
-          <label className="field">
-            <span>API 키</span>
-            <span className="password-input">
-              <input
-                type={showKey ? "text" : "password"}
-                autoComplete="off"
-                spellCheck="false"
-                value={keyDraft}
-                placeholder="sk-ant-..."
-                onChange={(event) => {
-                  setKeyDraft(event.target.value);
-                  setKeyTested(false);
-                }}
-              />
-              <button
-                type="button"
-                aria-label={showKey ? "API 키 숨기기" : "API 키 표시"}
-                onClick={() => setShowKey((value) => !value)}
-              >
-                {showKey ? (
-                  <EyeOff size={18} aria-hidden="true" />
-                ) : (
-                  <Eye size={18} aria-hidden="true" />
+          {apiKeyAvailable && !editingKey ? (
+            <>
+              <div className="api-key-status" role="status">
+                <span className="api-key-status__icon">
+                  <ShieldCheck size={19} aria-hidden="true" />
+                </span>
+                <span>
+                  <strong>API 키가 저장되어 있어요</strong>
+                  <small>
+                    {remembered
+                      ? "값은 표시하지 않고 이 기기에 기억 중"
+                      : "값은 표시하지 않고 이번 세션에만 보관 중"}
+                  </small>
+                </span>
+              </div>
+
+              <div className="settings-card__actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={startChangingKey}
+                >
+                  <KeyRound size={17} aria-hidden="true" />
+                  API 키 변경
+                </button>
+                <button
+                  className="text-button text-button--danger"
+                  type="button"
+                  onClick={() => {
+                    onClearApiKey();
+                    setKeyDraft("");
+                    setEditingKey(true);
+                  }}
+                >
+                  <Trash2 size={16} aria-hidden="true" />키 삭제
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="field">
+                <span>{apiKeyAvailable ? "새 API 키" : "API 키"}</span>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  spellCheck="false"
+                  value={keyDraft}
+                  placeholder="sk-ant-..."
+                  onChange={(event) => setKeyDraft(event.target.value)}
+                />
+              </label>
+
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={rememberDraft}
+                  onChange={(event) => setRememberDraft(event.target.checked)}
+                />
+                <span>
+                  <strong>이 기기에 기억</strong>
+                  <small>
+                    끄면 앱을 완전히 닫을 때 키가 사라져 더 안전해요.
+                  </small>
+                </span>
+              </label>
+
+              <div className="settings-card__actions">
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={testingKey}
+                  onClick={() => void saveKey()}
+                >
+                  {testingKey ? (
+                    <LoaderCircle
+                      className="spin"
+                      size={18}
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <ShieldCheck size={18} aria-hidden="true" />
+                  )}
+                  {testingKey ? "연결 확인 중…" : "확인 후 안전하게 저장"}
+                </button>
+                {apiKeyAvailable && (
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={testingKey}
+                    onClick={cancelChangingKey}
+                  >
+                    변경 취소
+                  </button>
                 )}
-              </button>
-            </span>
-          </label>
-
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={rememberDraft}
-              onChange={(event) => setRememberDraft(event.target.checked)}
-            />
-            <span>
-              <strong>이 기기에 기억</strong>
-              <small>
-                끄면 앱을 완전히 닫을 때 키가 사라져 더 안전해요.
-              </small>
-            </span>
-          </label>
-
-          <div className="settings-card__actions">
-            <button
-              className="primary-button"
-              type="button"
-              disabled={testingKey}
-              onClick={() => void saveKey()}
-            >
-              {testingKey ? (
-                <LoaderCircle className="spin" size={18} aria-hidden="true" />
-              ) : keyTested ? (
-                <Check size={18} aria-hidden="true" />
-              ) : (
-                <ShieldCheck size={18} aria-hidden="true" />
-              )}
-              {testingKey
-                ? "연결 확인 중…"
-                : keyTested
-                  ? "연결 확인됨"
-                  : "저장하고 연결 테스트"}
-            </button>
-            {apiKey && (
-              <button
-                className="text-button text-button--danger"
-                type="button"
-                onClick={() => {
-                  onClearApiKey();
-                  setKeyDraft("");
-                  setKeyTested(false);
-                }}
-              >
-                <Trash2 size={16} aria-hidden="true" />키 삭제
-              </button>
-            )}
-          </div>
+              </div>
+            </>
+          )}
 
           <div className="security-note">
             <LockKeyhole size={17} aria-hidden="true" />
             <p>
-              키는 백업이나 식단 파일에 포함되지 않습니다. AI 분석을 누를
-              때만 음식 설명과 선택한 사진을 Anthropic으로 전송합니다.
-              GitHub Pages에서는 보안을 위해 가능하면 기억 옵션을 끄세요.
+              저장된 키 원문은 이 화면에 다시 표시하지 않고, 백업이나 식단
+              파일에도 포함하지 않습니다. AI 분석을 누를 때만 음식 설명과
+              선택한 사진을 Anthropic으로 전송합니다. GitHub Pages에서는
+              가능하면 기억 옵션을 끄세요.
             </p>
           </div>
         </section>

@@ -2,6 +2,7 @@ import {
   Activity,
   BriefcaseBusiness,
   CalendarCheck,
+  CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -18,6 +19,7 @@ import {
   Weight
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import CalendarSheet from "../components/CalendarSheet";
 import {
   calculateBmr,
   calculateSimpleTdee,
@@ -43,8 +45,11 @@ type MetabolismMode = "simple" | "detail" | "learning";
 
 interface MetabolismScreenProps {
   selectedDay: string;
+  todayDay: string;
   dateLabel: string;
   isToday: boolean;
+  dietRecordDays: readonly string[];
+  metabolismRecordDays: readonly string[];
   profile: MetabolismProfile | null;
   entry: DailyMetabolismEntry | null;
   history: DailyMetabolismEntry[];
@@ -52,9 +57,12 @@ interface MetabolismScreenProps {
   isBusy?: boolean;
   onPreviousDate: () => void;
   onNextDate: () => void;
-  onToday: () => void;
+  onSelectDate: (dayKey: string) => void;
   onOpenSettings: () => void;
-  onSaveProfile: (profile: MetabolismProfile) => void | Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
+  onSaveProfile: (
+    profile: MetabolismProfile
+  ) => void | boolean | Promise<void | boolean>;
   onSaveDay: (
     profile: MetabolismProfile,
     entry: DailyMetabolismEntry
@@ -104,18 +112,26 @@ const WORK_TYPES: Array<{
   label: string;
   description: string;
 }> = [
-  { value: "seated", label: "주로 앉음", description: "책상 업무·진료 기록" },
+  {
+    value: "seated",
+    label: "주로 앉음",
+    description: "사무·재택처럼 대부분 앉아서 일함"
+  },
   {
     value: "standing",
     label: "앉기·서기 섞임",
-    description: "진료·상담처럼 자주 자세를 바꿈"
+    description: "서비스·교육처럼 자세를 자주 바꿈"
   },
   {
     value: "walking",
     label: "자주 걷기",
-    description: "외부 탐방·영업·현장 이동"
+    description: "외근·영업처럼 이동과 걷기가 잦음"
   },
-  { value: "physical", label: "육체 활동", description: "들기·나르기·현장 작업" }
+  {
+    value: "physical",
+    label: "육체 활동",
+    description: "현장·운반처럼 힘쓰는 일이 많음"
+  }
 ];
 
 const EXERCISE_CATEGORIES: Array<{
@@ -138,28 +154,84 @@ const INTENSITIES: Array<{ value: ExerciseIntensity; label: string }> = [
   { value: "high", label: "강하게" }
 ];
 
-const JOB_EXAMPLES: Array<Omit<WorkTemplate, "id">> = [
+const JOB_EXAMPLES: Array<{
+  name: string;
+  activityType: WorkActivityType;
+  hours: number;
+}> = [
   {
-    name: "피부과 진료",
-    activityType: "standing",
-    defaultHours: 8
-  },
-  {
-    name: "전업투자자 · 실내",
+    name: "사무·재택",
     activityType: "seated",
-    defaultHours: 8
+    hours: 8
   },
   {
-    name: "전업투자자 · 외부 탐방",
+    name: "서비스·교육",
+    activityType: "standing",
+    hours: 8
+  },
+  {
+    name: "외근·영업",
     activityType: "walking",
-    defaultHours: 6
+    hours: 6
+  },
+  {
+    name: "현장·운반",
+    activityType: "physical",
+    hours: 8
+  }
+];
+
+const EXERCISE_EXAMPLES: Array<{
+  name: string;
+  category: ExerciseCategory;
+  intensity: ExerciseIntensity;
+  durationMinutes: number;
+}> = [
+  {
+    name: "빠르게 걷기",
+    category: "walking",
+    intensity: "moderate",
+    durationMinutes: 30
+  },
+  {
+    name: "달리기",
+    category: "running",
+    intensity: "moderate",
+    durationMinutes: 30
+  },
+  {
+    name: "자전거",
+    category: "cycling",
+    intensity: "moderate",
+    durationMinutes: 45
+  },
+  {
+    name: "웨이트트레이닝",
+    category: "strength",
+    intensity: "moderate",
+    durationMinutes: 60
+  },
+  {
+    name: "수영",
+    category: "swimming",
+    intensity: "moderate",
+    durationMinutes: 45
+  },
+  {
+    name: "구기 운동",
+    category: "sports",
+    intensity: "moderate",
+    durationMinutes: 60
   }
 ];
 
 export default function MetabolismScreen({
   selectedDay,
+  todayDay,
   dateLabel,
   isToday,
+  dietRecordDays,
+  metabolismRecordDays,
   profile,
   entry,
   history,
@@ -167,12 +239,20 @@ export default function MetabolismScreen({
   isBusy = false,
   onPreviousDate,
   onNextDate,
-  onToday,
+  onSelectDate,
   onOpenSettings,
+  onDirtyChange,
   onSaveProfile,
   onSaveDay
 }: MetabolismScreenProps) {
   const [mode, setMode] = useState<MetabolismMode>("detail");
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [profileDirty, setProfileDirty] = useState(false);
+  const [entryDirty, setEntryDirty] = useState(false);
+  const [heightEditorOpen, setHeightEditorOpen] = useState(
+    !profile?.heightCm
+  );
+  const [heightDraft, setHeightDraft] = useState<number | undefined>();
   const [simpleLevel, setSimpleLevel] =
     useState<SimpleActivityLevel>("moderate");
   const [sexConfirmed, setSexConfirmed] = useState(Boolean(profile));
@@ -186,11 +266,67 @@ export default function MetabolismScreen({
   useEffect(() => {
     setProfileDraft(profile ?? emptyProfile());
     setSexConfirmed(Boolean(profile));
+    setProfileDirty(false);
+    setHeightEditorOpen(!profile?.heightCm);
+    setHeightDraft(undefined);
   }, [profile]);
 
   useEffect(() => {
     setEntryDraft(entry ?? emptyEntry(selectedDay));
+    setEntryDirty(false);
   }, [entry, selectedDay]);
+
+  useEffect(() => {
+    onDirtyChange?.(
+      profileDirty ||
+        entryDirty ||
+        (Boolean(profile?.heightCm) &&
+          heightEditorOpen &&
+          heightDraft !== undefined)
+    );
+  }, [
+    entryDirty,
+    heightDraft,
+    heightEditorOpen,
+    onDirtyChange,
+    profile?.heightCm,
+    profileDirty
+  ]);
+
+  const changeProfileDraft = (next: MetabolismProfile) => {
+    setProfileDraft(next);
+    setProfileDirty(true);
+  };
+
+  const changeEntryDraft = (next: DailyMetabolismEntry) => {
+    setEntryDraft(next);
+    setEntryDirty(true);
+  };
+
+  const requestDiscard = (
+    change: () => void,
+    message: string
+  ): boolean => {
+    if (
+      (profileDirty || entryDirty) &&
+      !window.confirm(message)
+    ) {
+      return false;
+    }
+    setProfileDirty(false);
+    setEntryDirty(false);
+    setHeightEditorOpen(!profile?.heightCm);
+    setHeightDraft(undefined);
+    onDirtyChange?.(false);
+    change();
+    return true;
+  };
+
+  const requestDateChange = (change: () => void): boolean =>
+    requestDiscard(
+      change,
+      "저장하지 않은 대사량 입력이 있습니다. 변경사항을 버리고 날짜를 이동할까요?"
+    );
 
   const bmr = useMemo(() => {
     if (
@@ -259,13 +395,41 @@ export default function MetabolismScreen({
     return dailyEstimate;
   }, [bmr, dailyEstimate, learning, mode, simpleEstimate]);
 
-  const saveProfileDraft = async () => {
+  const saveProfileDraft = async (
+    nextDraft: MetabolismProfile = profileDraft
+  ): Promise<boolean> => {
     const now = new Date().toISOString();
-    await onSaveProfile({
-      ...profileDraft,
-      createdAt: profileDraft.createdAt || now,
+    const nextProfile = {
+      ...nextDraft,
+      createdAt: nextDraft.createdAt || now,
       updatedAt: now
+    };
+    const result = await onSaveProfile(nextProfile);
+    if (result === false) return false;
+
+    setProfileDraft(nextProfile);
+    setProfileDirty(false);
+    return true;
+  };
+
+  const saveHeightDraft = async (): Promise<void> => {
+    if (
+      heightDraft === undefined ||
+      !Number.isFinite(heightDraft) ||
+      heightDraft < 100 ||
+      heightDraft > 230
+    ) {
+      return;
+    }
+
+    const saved = await saveProfileDraft({
+      ...profileDraft,
+      heightCm: heightDraft
     });
+    if (!saved) return;
+
+    setHeightDraft(undefined);
+    setHeightEditorOpen(false);
   };
 
   const saveEntryDraft = async () => {
@@ -298,7 +462,12 @@ export default function MetabolismScreen({
           className="icon-button"
           type="button"
           aria-label="설정 열기"
-          onClick={onOpenSettings}
+          onClick={() =>
+            requestDiscard(
+              onOpenSettings,
+              "저장하지 않은 대사량 입력이 있습니다. 변경사항을 버리고 설정으로 이동할까요?"
+            )
+          }
         >
           <Settings size={21} aria-hidden="true" />
         </button>
@@ -309,20 +478,28 @@ export default function MetabolismScreen({
           className="icon-button icon-button--ghost"
           type="button"
           aria-label="이전 날짜"
-          onClick={onPreviousDate}
+          onClick={() => requestDateChange(onPreviousDate)}
         >
           <ChevronLeft size={22} aria-hidden="true" />
         </button>
-        <button className="date-navigation__label" type="button" onClick={onToday}>
+        <button
+          className="date-navigation__label"
+          type="button"
+          aria-label={`${dateLabel}, 달력 열기`}
+          onClick={() => setCalendarOpen(true)}
+        >
           <span>{dateLabel}</span>
-          {!isToday && <small>오늘로 이동</small>}
+          <small>
+            <CalendarDays size={12} aria-hidden="true" />
+            달력에서 찾기
+          </small>
         </button>
         <button
           className="icon-button icon-button--ghost"
           type="button"
           aria-label="다음 날짜"
           disabled={isToday}
-          onClick={onNextDate}
+          onClick={() => requestDateChange(onNextDate)}
         >
           <ChevronRight size={22} aria-hidden="true" />
         </button>
@@ -337,15 +514,29 @@ export default function MetabolismScreen({
       <div className="metabolism-screen__body">
         <ProfileCard
           profile={profileDraft}
+          hasSavedHeight={Boolean(profile?.heightCm)}
           bmr={bmr}
           sexConfirmed={sexConfirmed}
           bodyFatPercent={entryDraft.bodyFatPercent}
           isBusy={isBusy}
-          onChange={setProfileDraft}
+          heightEditorOpen={heightEditorOpen}
+          heightDraft={heightDraft}
+          onChange={changeProfileDraft}
           onConfirmSex={(sex) => {
             setSexConfirmed(true);
             setProfileDraft((current) => ({ ...current, sex }));
+            setProfileDirty(true);
           }}
+          onBeginHeightEdit={() => {
+            setHeightDraft(undefined);
+            setHeightEditorOpen(true);
+          }}
+          onCancelHeightEdit={() => {
+            setHeightDraft(undefined);
+            setHeightEditorOpen(false);
+          }}
+          onHeightDraftChange={setHeightDraft}
+          onSaveHeight={() => void saveHeightDraft()}
           onSave={() => void saveProfileDraft()}
         />
 
@@ -386,8 +577,8 @@ export default function MetabolismScreen({
             entry={entryDraft}
             estimate={dailyEstimate}
             isBusy={isBusy}
-            onProfileChange={setProfileDraft}
-            onEntryChange={setEntryDraft}
+            onProfileChange={changeProfileDraft}
+            onEntryChange={changeEntryDraft}
             onSaveProfile={() => void saveProfileDraft()}
             onSaveEntry={() => void saveEntryDraft()}
           />
@@ -399,11 +590,26 @@ export default function MetabolismScreen({
             entry={entryDraft}
             isBusy={isBusy}
             canSave={Boolean(bmr)}
-            onEntryChange={setEntryDraft}
+            onEntryChange={changeEntryDraft}
             onSaveEntry={() => void saveEntryDraft()}
           />
         )}
       </div>
+
+      {calendarOpen && (
+        <CalendarSheet
+          selectedDay={selectedDay}
+          todayDay={todayDay}
+          dietRecordDays={dietRecordDays}
+          metabolismRecordDays={metabolismRecordDays}
+          onSelectDay={(dayKey) =>
+            dayKey === selectedDay
+              ? true
+              : requestDateChange(() => onSelectDate(dayKey))
+          }
+          onClose={() => setCalendarOpen(false)}
+        />
+      )}
     </main>
   );
 }
@@ -440,21 +646,35 @@ function EnergySummary({
 
 function ProfileCard({
   profile,
+  hasSavedHeight,
   bmr,
   sexConfirmed,
   bodyFatPercent,
   isBusy,
+  heightEditorOpen,
+  heightDraft,
   onChange,
   onConfirmSex,
+  onBeginHeightEdit,
+  onCancelHeightEdit,
+  onHeightDraftChange,
+  onSaveHeight,
   onSave
 }: {
   profile: MetabolismProfile;
+  hasSavedHeight: boolean;
   bmr: ReturnType<typeof calculateBmr> | null;
   sexConfirmed: boolean;
   bodyFatPercent?: number;
   isBusy: boolean;
+  heightEditorOpen: boolean;
+  heightDraft?: number;
   onChange: (profile: MetabolismProfile) => void;
   onConfirmSex: (sex: MetabolismProfile["sex"]) => void;
+  onBeginHeightEdit: () => void;
+  onCancelHeightEdit: () => void;
+  onHeightDraftChange: (heightCm: number | undefined) => void;
+  onSaveHeight: () => void;
   onSave: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(!bmr);
@@ -473,8 +693,10 @@ function ProfileCard({
           <strong>내 기본 정보</strong>
           <small>
             {bmr
-              ? `${bmr.ageYears}세 · ${profile.heightCm}cm · ${bmrMethodLabel(bmr.method)}`
-              : "성별·생년월일·키를 먼저 입력해 주세요"}
+              ? `${bmr.ageYears}세 · 신장 입력 완료 · ${bmrMethodLabel(bmr.method)}`
+              : hasSavedHeight
+                ? "신장 입력 완료 · 체중 입력 후 BMR을 계산해요"
+                : "성별·생년월일·신장을 먼저 입력해 주세요"}
           </small>
         </span>
         <ChevronDown size={18} aria-hidden="true" />
@@ -520,22 +742,86 @@ function ProfileCard({
               }
             />
           </label>
-          <NumberField
-            label="키"
-            unit="cm"
-            value={profile.heightCm}
-            min={100}
-            max={230}
-            step={0.1}
-            onChange={(heightCm) => onChange({ ...profile, heightCm })}
-          />
+          {!hasSavedHeight ? (
+            <NumberField
+              label="신장"
+              unit="cm"
+              value={profile.heightCm}
+              min={100}
+              max={230}
+              step={0.1}
+              onChange={(heightCm) => onChange({ ...profile, heightCm })}
+            />
+          ) : heightEditorOpen ? (
+            <div className="height-editor">
+              <label className="field field--number">
+                <span>새 신장</span>
+                <span className="number-input">
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={heightDraft ?? ""}
+                    min={100}
+                    max={230}
+                    step={0.1}
+                    autoComplete="off"
+                    aria-label="새 신장 (cm)"
+                    onChange={(event) =>
+                      onHeightDraftChange(
+                        event.target.value === ""
+                          ? undefined
+                          : Number(event.target.value)
+                      )
+                    }
+                  />
+                  <span>cm</span>
+                </span>
+              </label>
+              <div className="height-editor__actions">
+                <button
+                  className="text-button text-button--muted"
+                  type="button"
+                  onClick={onCancelHeightEdit}
+                >
+                  취소
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={
+                    isBusy ||
+                    heightDraft === undefined ||
+                    heightDraft < 100 ||
+                    heightDraft > 230
+                  }
+                  onClick={onSaveHeight}
+                >
+                  신장 변경 저장
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="saved-height" role="status">
+              <span>
+                <strong>신장 입력 완료</strong>
+                <small>저장된 수치는 평소 화면에 표시하지 않아요.</small>
+              </span>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={onBeginHeightEdit}
+              >
+                신장 변경
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="formula-note">
           <Info size={16} aria-hidden="true" />
           <p>
             체지방률이 있으면 <strong>370 + 21.6 × 제지방량</strong>을,
-            없으면 성별·나이·키·체중을 이용한 공식을 적용해요.
+            없으면 성별·나이·신장·체중을 이용한 공식을 적용해요.
             {bodyFatPercent != null && bmr?.leanBodyMassKg != null && (
               <>
                 {" "}
@@ -553,7 +839,8 @@ function ProfileCard({
             isBusy ||
             !sexConfirmed ||
             !profile.birthDate ||
-            profile.heightCm <= 0
+            profile.heightCm <= 0 ||
+            (hasSavedHeight && heightEditorOpen)
           }
           onClick={onSave}
         >
@@ -795,6 +1082,17 @@ function WorkToday({
       }
     ]);
   };
+  const addExample = (example: (typeof JOB_EXAMPLES)[number]) => {
+    onChange([
+      ...activities,
+      {
+        id: createId("work"),
+        name: example.name,
+        activityType: example.activityType,
+        hours: example.hours
+      }
+    ]);
+  };
   const totalHours = activities.reduce(
     (sum, activity) => sum + activity.hours,
     0
@@ -808,20 +1106,41 @@ function WorkToday({
         </span>
         <div>
           <h3>오늘의 직업 활동</h3>
-          <p>같은 날 진료와 외부 탐방을 모두 했다면 둘 다 추가하세요.</p>
+          <p>같은 날 서로 다른 업무를 했다면 각각 실제 시간만큼 추가하세요.</p>
         </div>
       </div>
 
       {templates.length > 0 && (
-        <div className="quick-add-row" aria-label="직업 템플릿으로 추가">
-          {templates.map((template) => (
-            <button type="button" key={template.id} onClick={() => addTemplate(template)}>
-              <Plus size={14} aria-hidden="true" />
-              {template.name}
-            </button>
-          ))}
-        </div>
+        <>
+          <p className="quick-add-label">내 직업 템플릿</p>
+          <div className="quick-add-row" aria-label="저장한 직업 템플릿으로 추가">
+            {templates.map((template) => (
+              <button
+                type="button"
+                key={template.id}
+                onClick={() => addTemplate(template)}
+              >
+                <Plus size={14} aria-hidden="true" />
+                {template.name}
+              </button>
+            ))}
+          </div>
+        </>
       )}
+
+      <p className="quick-add-label">일반적인 직업 예시</p>
+      <div className="quick-add-row" aria-label="일반적인 직업 예시로 추가">
+        {JOB_EXAMPLES.map((example) => (
+          <button
+            type="button"
+            key={example.name}
+            onClick={() => addExample(example)}
+          >
+            <Plus size={14} aria-hidden="true" />
+            {example.name}
+          </button>
+        ))}
+      </div>
 
       <div className="today-activity-list">
         {activities.map((activity) => (
@@ -956,6 +1275,18 @@ function ExerciseToday({
       }
     ]);
   };
+  const addExample = (example: (typeof EXERCISE_EXAMPLES)[number]) => {
+    onChange([
+      ...exercises,
+      {
+        id: createId("exercise"),
+        name: example.name,
+        category: example.category,
+        intensity: example.intensity,
+        durationMinutes: example.durationMinutes
+      }
+    ]);
+  };
 
   return (
     <div className="metabolism-subcard">
@@ -970,15 +1301,36 @@ function ExerciseToday({
       </div>
 
       {templates.length > 0 && (
-        <div className="quick-add-row" aria-label="운동 템플릿으로 추가">
-          {templates.map((template) => (
-            <button type="button" key={template.id} onClick={() => addTemplate(template)}>
-              <Plus size={14} aria-hidden="true" />
-              {template.name}
-            </button>
-          ))}
-        </div>
+        <>
+          <p className="quick-add-label">내 운동 템플릿</p>
+          <div className="quick-add-row" aria-label="저장한 운동 템플릿으로 추가">
+            {templates.map((template) => (
+              <button
+                type="button"
+                key={template.id}
+                onClick={() => addTemplate(template)}
+              >
+                <Plus size={14} aria-hidden="true" />
+                {template.name}
+              </button>
+            ))}
+          </div>
+        </>
       )}
+
+      <p className="quick-add-label">일반적인 운동 예시</p>
+      <div className="quick-add-row" aria-label="일반적인 운동 예시로 추가">
+        {EXERCISE_EXAMPLES.map((example) => (
+          <button
+            type="button"
+            key={example.name}
+            onClick={() => addExample(example)}
+          >
+            <Plus size={14} aria-hidden="true" />
+            {example.name}
+          </button>
+        ))}
+      </div>
 
       <div className="today-activity-list">
         {exercises.map((exercise) => (
@@ -1118,17 +1470,6 @@ function TemplateManager({
   onChange: (profile: MetabolismProfile) => void;
   onSave: () => void;
 }) {
-  const addJobExample = (example: Omit<WorkTemplate, "id">) => {
-    if (profile.jobTemplates.some((item) => item.name === example.name)) return;
-    onChange({
-      ...profile,
-      jobTemplates: [
-        ...profile.jobTemplates,
-        { id: createId("job-template"), ...example }
-      ]
-    });
-  };
-
   return (
     <details className="template-manager">
       <summary>
@@ -1147,25 +1488,6 @@ function TemplateManager({
               <p>요일마다 직업이 달라도 템플릿을 여러 개 저장할 수 있어요.</p>
             </div>
             <BriefcaseBusiness size={18} aria-hidden="true" />
-          </div>
-
-          <div className="example-jobs">
-            {JOB_EXAMPLES.map((example) => {
-              const added = profile.jobTemplates.some(
-                (item) => item.name === example.name
-              );
-              return (
-                <button
-                  className={added ? "is-added" : ""}
-                  type="button"
-                  disabled={added}
-                  key={example.name}
-                  onClick={() => addJobExample(example)}
-                >
-                  {added ? "추가됨" : "+ 예시"} · {example.name}
-                </button>
-              );
-            })}
           </div>
 
           <div className="template-list">
@@ -1782,7 +2104,7 @@ function emptyProfile(): MetabolismProfile {
     id: "metabolism",
     sex: "male",
     birthDate: "",
-    heightCm: 170,
+    heightCm: 0,
     jobTemplates: [],
     exerciseTemplates: [],
     createdAt: now,

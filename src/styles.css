@@ -223,6 +223,9 @@ p {
 }
 
 .date-navigation__label small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--blue);
   font-size: 10px;
 }
@@ -1157,28 +1160,41 @@ p {
   line-height: 1.45;
 }
 
-.password-input {
-  position: relative;
-  display: block;
+.api-key-status {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid #cfe2d6;
+  border-radius: 13px;
+  color: #315f4a;
+  background: #edf5f0;
 }
 
-.password-input input {
-  padding-right: 48px;
-}
-
-.password-input button {
-  position: absolute;
-  top: 50%;
-  right: 4px;
+.api-key-status__icon {
   display: grid;
-  width: 40px;
-  height: 40px;
-  padding: 0;
+  width: 36px;
+  height: 36px;
+  flex: none;
   place-items: center;
-  border: 0;
-  color: var(--muted);
-  background: transparent;
-  transform: translateY(-50%);
+  border-radius: 11px;
+  background: rgba(49, 95, 74, 0.1);
+}
+
+.api-key-status > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.api-key-status strong {
+  font-size: 12px;
+}
+
+.api-key-status small {
+  color: #5f7a6d;
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .check-row {

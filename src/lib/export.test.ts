@@ -13,6 +13,11 @@ import {
   importBackup,
   parseBackup
 } from "./export";
+import {
+  appendGoalTarget,
+  goalTargetFromRecommendation
+} from "./goalHistory";
+import { calculateGoalRecommendation, type GoalPlan } from "./goals";
 
 const fixture: FoodRecord = {
   id: "record-1",
@@ -285,6 +290,82 @@ describe("백업 병합", () => {
     expect(parsed.metabolismProfile).toBeNull();
     expect(parsed.metabolismEntries).toEqual([]);
   });
+
+  it("목표 이력과 적용일을 백업에서 그대로 복원한다", () => {
+    const backup = backupWith(fixture);
+    const plan: GoalPlan = {
+      goalType: "lean_mass_gain",
+      pace: "gentle",
+      resistanceTrainingDaysPerWeek: 3,
+      targetWeightKg: 76,
+      targetDate: "2026-12-31"
+    };
+    const target = goalTargetFromRecommendation({
+      id: "goal-1",
+      effectiveFrom: "2026-07-26",
+      plan,
+      recommendation: calculateGoalRecommendation({
+        tdeeKcal: 2400,
+        weightKg: 72,
+        plan
+      }),
+      tdeeSource: "detailed",
+      createdAt: "2026-07-26T12:00:00.000Z"
+    });
+    backup.settings.goalSettings = appendGoalTarget(undefined, target);
+
+    const parsed = parseBackup(backup);
+
+    expect(parsed.settings.goalSettings?.targets).toEqual([target]);
+    expect(parsed.settings.goalSettings?.targets[0].effectiveFrom).toBe(
+      "2026-07-26"
+    );
+  });
+
+  it("현재 앱 설정이 더 최신이어도 백업의 다른 목표 이력은 병합한다", async () => {
+    const plan: GoalPlan = {
+      goalType: "fat_loss",
+      pace: "moderate",
+      resistanceTrainingDaysPerWeek: 3
+    };
+    const makeTarget = (id: string, day: string) =>
+      goalTargetFromRecommendation({
+        id,
+        effectiveFrom: day,
+        plan,
+        recommendation: calculateGoalRecommendation({
+          tdeeKcal: 2400,
+          weightKg: 72,
+          plan
+        }),
+        tdeeSource: "detailed",
+        createdAt: `${day}T00:00:00.000Z`
+      });
+    await db.settings.put({
+      id: "app",
+      dayStartHour: 4,
+      modelId: "newer-model",
+      goalSettings: appendGoalTarget(
+        undefined,
+        makeTarget("current-goal", "2026-07-20")
+      ),
+      updatedAt: "2026-07-30T00:00:00.000Z"
+    });
+    const backup = backupWith(fixture);
+    backup.settings.goalSettings = appendGoalTarget(
+      undefined,
+      makeTarget("backup-goal", "2026-07-10")
+    );
+
+    await importBackup(backup, "merge");
+
+    const settings = await db.settings.get("app");
+    expect(settings?.modelId).toBe("newer-model");
+    expect(settings?.goalSettings?.targets.map((item) => item.id)).toEqual([
+      "backup-goal",
+      "current-goal"
+    ]);
+  });
 });
 
 const metabolismProfileFixture: MetabolismProfile = {
@@ -294,14 +375,14 @@ const metabolismProfileFixture: MetabolismProfile = {
   heightCm: 175,
   jobTemplates: [
     {
-      id: "job-doctor",
-      name: "피부과 진료",
+      id: "job-office",
+      name: "사무·재택",
       activityType: "standing",
       defaultHours: 8
     },
     {
-      id: "job-investor",
-      name: "전업투자자 · 외부 탐방",
+      id: "job-sales",
+      name: "외근·영업",
       activityType: "walking",
       defaultHours: 6
     }
@@ -320,8 +401,8 @@ const metabolismEntryFixture: DailyMetabolismEntry = {
   jobActivities: [
     {
       id: "work-1",
-      templateId: "job-doctor",
-      name: "피부과 진료",
+      templateId: "job-office",
+      name: "사무·재택",
       activityType: "standing",
       hours: 8
     }

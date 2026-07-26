@@ -1,6 +1,7 @@
 import { LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppNavigation from "./components/AppNavigation";
+import type { SaveGoalInput } from "./components/GoalDashboard";
 import HomeScreen from "./screens/HomeScreen";
 import MetabolismScreen from "./screens/MetabolismScreen";
 import RecordDetailScreen from "./screens/RecordDetailScreen";
@@ -17,6 +18,7 @@ import {
   listDailyMetabolismEntries,
   listRecords,
   requestPersistentStorage,
+  saveGoalSettings,
   saveMetabolismProfileAndEntry,
   saveMetabolismProfile,
   saveRecord,
@@ -29,6 +31,15 @@ import {
   getTodayDayKey,
   isDayKeyInRange
 } from "./lib/date";
+import {
+  appendGoalTarget,
+  goalTargetForDay,
+  goalTargetFromRecommendation
+} from "./lib/goalHistory";
+import {
+  detectRecommendationChangeForNewTdee,
+  GOAL_SAFETY_LIMITS
+} from "./lib/goals";
 import {
   buildCsv,
   buildMarkdown,
@@ -44,6 +55,10 @@ import {
   saveApiKey
 } from "./lib/keyStore";
 import { completeEnergyTotal, sumRecords } from "./lib/nutrition";
+import {
+  estimateDailyEnergy,
+  estimatePersonalizedTdee
+} from "./lib/metabolism";
 import type {
   AppSettings,
   DailyMetabolismEntry,
@@ -90,10 +105,12 @@ export default function App() {
   >([]);
   const [settings, setSettingsState] = useState<AppSettings | null>(null);
   const [selectedDay, setSelectedDay] = useState("");
+  const [todayDay, setTodayDay] = useState("");
   const [credential, setCredential] = useState(loadApiKey);
   const [storagePersisted, setStoragePersisted] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [metabolismDirty, setMetabolismDirty] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [homePhotoUrls, setHomePhotoUrls] = useState<Record<string, string>>({});
   const [detailPhotoUrls, setDetailPhotoUrls] = useState<string[]>([]);
@@ -145,7 +162,9 @@ export default function App() {
         setSettingsState(loadedSettings);
         setMetabolismProfile(loadedProfile ?? null);
         setMetabolismEntries(loadedMetabolismEntries);
-        setSelectedDay(getTodayDayKey(loadedSettings.dayStartHour));
+        const loadedToday = getTodayDayKey(loadedSettings.dayStartHour);
+        setTodayDay(loadedToday);
+        setSelectedDay(loadedToday);
         setStoragePersisted(persisted);
       } catch (error) {
         if (active) {
@@ -159,6 +178,28 @@ export default function App() {
       active = false;
     };
   }, [notify]);
+
+  useEffect(() => {
+    if (!settings) return;
+    const refreshLogicalToday = () => {
+      const nextToday = getTodayDayKey(settings.dayStartHour);
+      setTodayDay(nextToday);
+      setSelectedDay((current) =>
+        current && current > nextToday ? nextToday : current
+      );
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshLogicalToday();
+    };
+
+    refreshLogicalToday();
+    const timer = window.setInterval(refreshLogicalToday, 30_000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [settings?.dayStartHour]);
 
   const dayRecords = useMemo(() => {
     if (!settings || !selectedDay) return [];
@@ -204,10 +245,139 @@ export default function App() {
     ) as Record<string, number>;
   }, [records, settings]);
 
+  const totalsByDate = useMemo(() => {
+    if (!settings) return {};
+    const grouped = new Map<string, FoodRecord[]>();
+    for (const record of records) {
+      const dayKey = getRecordDayKey(record, settings.dayStartHour);
+      const group = grouped.get(dayKey);
+      if (group) group.push(record);
+      else grouped.set(dayKey, [record]);
+    }
+    return Object.fromEntries(
+      [...grouped].map(([dayKey, values]) => [dayKey, sumRecords(values)])
+    );
+  }, [records, settings]);
+
+  const dietRecordDays = useMemo(() => {
+    if (!settings) return [];
+    return [
+      ...new Set(
+        records.map((record) =>
+          getRecordDayKey(record, settings.dayStartHour)
+        )
+      )
+    ];
+  }, [records, settings]);
+  const metabolismRecordDays = useMemo(
+    () => metabolismEntries.map((entry) => entry.date),
+    [metabolismEntries]
+  );
+
+  const goalBasis = useMemo(() => {
+    const latestEntry = learningEntries.at(-1);
+    if (!latestEntry) return undefined;
+
+    try {
+      const personalized = estimatePersonalizedTdee(
+        learningEntries,
+        intakeByDate
+      );
+      if (
+        personalized.status === "estimated" &&
+        personalized.tdeeKcal !== undefined &&
+        personalized.tdeeKcal >=
+          GOAL_SAFETY_LIMITS.minimumValidTdeeKcal &&
+        personalized.tdeeKcal <=
+          GOAL_SAFETY_LIMITS.maximumValidTdeeKcal
+      ) {
+        return {
+          tdeeKcal: personalized.tdeeKcal,
+          weightKg: latestEntry.weightKg,
+          heightCm: metabolismProfile?.heightCm,
+          source: "personalized" as const
+        };
+      }
+    } catch {
+      // Fall back to the latest detailed estimate below.
+    }
+
+    if (!metabolismProfile) return undefined;
+    try {
+      const detailed = estimateDailyEnergy(metabolismProfile, latestEntry);
+      if (
+        detailed.tdeeKcal <
+          GOAL_SAFETY_LIMITS.minimumValidTdeeKcal ||
+        detailed.tdeeKcal >
+          GOAL_SAFETY_LIMITS.maximumValidTdeeKcal
+      ) {
+        return undefined;
+      }
+      return {
+        tdeeKcal: detailed.tdeeKcal,
+        weightKg: latestEntry.weightKg,
+        heightCm: metabolismProfile.heightCm,
+        source: "detailed" as const
+      };
+    } catch {
+      return undefined;
+    }
+  }, [
+    intakeByDate,
+    learningEntries,
+    metabolismProfile
+  ]);
+
+  const goalRecommendationChange = useMemo(() => {
+    if (!todayDay) return undefined;
+    const activeTarget = goalTargetForDay(
+      settings?.goalSettings,
+      todayDay
+    );
+    if (!activeTarget || !goalBasis || activeTarget.plan.goalType === "custom") {
+      return undefined;
+    }
+    try {
+      return detectRecommendationChangeForNewTdee({
+        previousTdeeKcal: activeTarget.tdeeKcal,
+        newTdeeKcal: goalBasis.tdeeKcal,
+        weightKg: goalBasis.weightKg,
+        plan: activeTarget.plan
+      });
+    } catch {
+      return undefined;
+    }
+  }, [goalBasis, settings?.goalSettings, todayDay]);
+
   const selectedRecord =
     screen.name === "detail" || screen.name === "editor"
       ? records.find((record) => record.id === screen.recordId)
       : undefined;
+
+  const saveGoal = async (input: SaveGoalInput) => {
+    try {
+      const now = new Date().toISOString();
+      const target = goalTargetFromRecommendation({
+        id: createId("goal"),
+        effectiveFrom: todayDay,
+        plan: input.plan,
+        recommendation: input.recommendation,
+        tdeeSource: input.tdeeSource,
+        createdAt: now
+      });
+      const goalSettings = appendGoalTarget(
+        settings?.goalSettings,
+        target
+      );
+      const nextSettings = await saveGoalSettings(goalSettings);
+      setSettingsState(nextSettings);
+      notify("새 목표를 오늘부터 적용했어요.");
+    } catch (error) {
+      const message = errorMessage(error, "목표를 저장하지 못했습니다.");
+      notify(message, "error");
+      throw new Error(message);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -521,8 +691,16 @@ export default function App() {
   const updateSettings = async (next: AppSettings) => {
     setBusy(true);
     try {
+      const previousToday = getTodayDayKey(settings?.dayStartHour ?? 2);
       const saved = await saveSettings(next);
+      const nextToday = getTodayDayKey(saved.dayStartHour);
       setSettingsState(saved);
+      setTodayDay(nextToday);
+      setSelectedDay((current) =>
+        current === previousToday || current > nextToday
+          ? nextToday
+          : current
+      );
       notify("분석과 날짜 설정을 저장했어요.");
     } catch (error) {
       notify(errorMessage(error, "설정을 저장하지 못했습니다."), "error");
@@ -537,8 +715,10 @@ export default function App() {
       const saved = await saveMetabolismProfile(profile);
       setMetabolismProfile(saved);
       notify("대사량 프로필과 활동 템플릿을 저장했어요.");
+      return true;
     } catch (error) {
       notify(errorMessage(error, "대사량 프로필을 저장하지 못했습니다."), "error");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -669,7 +849,7 @@ export default function App() {
     }
   };
 
-  if (loading || !settings || !selectedDay) {
+  if (loading || !settings || !selectedDay || !todayDay) {
     return (
       <div className="app-shell">
         <div className="loading-screen">
@@ -685,14 +865,24 @@ export default function App() {
     <div className="app-shell">
       {screen.name === "home" && (
         <HomeScreen
+          selectedDay={selectedDay}
+          todayDay={todayDay}
           dateLabel={formatDayLabel(selectedDay)}
-          isToday={selectedDay === getTodayDayKey(settings.dayStartHour)}
+          isToday={selectedDay === todayDay}
           records={dayRecords}
           totals={dailyTotals}
+          totalsByDate={totalsByDate}
           photoUrls={homePhotoUrls}
+          dietRecordDays={dietRecordDays}
+          metabolismRecordDays={metabolismRecordDays}
+          goalSettings={settings.goalSettings}
+          goalBasis={goalBasis}
+          goalRecommendationChange={goalRecommendationChange}
           onPreviousDate={() => setSelectedDay(addDays(selectedDay, -1))}
           onNextDate={() => setSelectedDay(addDays(selectedDay, 1))}
-          onToday={() => setSelectedDay(getTodayDayKey(settings.dayStartHour))}
+          onSelectDate={setSelectedDay}
+          onSaveGoal={saveGoal}
+          onOpenMetabolism={() => setScreen({ name: "metabolism" })}
           onOpenSettings={() => setScreen({ name: "settings", from: "home" })}
           onAddRecord={() => void openEditor()}
           onOpenRecord={(recordId) => setScreen({ name: "detail", recordId })}
@@ -702,8 +892,11 @@ export default function App() {
       {screen.name === "metabolism" && (
         <MetabolismScreen
           selectedDay={selectedDay}
+          todayDay={todayDay}
           dateLabel={formatDayLabel(selectedDay)}
-          isToday={selectedDay === getTodayDayKey(settings.dayStartHour)}
+          isToday={selectedDay === todayDay}
+          dietRecordDays={dietRecordDays}
+          metabolismRecordDays={metabolismRecordDays}
           profile={metabolismProfile}
           entry={selectedMetabolismEntry}
           history={learningEntries}
@@ -711,10 +904,11 @@ export default function App() {
           isBusy={busy}
           onPreviousDate={() => setSelectedDay(addDays(selectedDay, -1))}
           onNextDate={() => setSelectedDay(addDays(selectedDay, 1))}
-          onToday={() => setSelectedDay(getTodayDayKey(settings.dayStartHour))}
+          onSelectDate={setSelectedDay}
           onOpenSettings={() =>
             setScreen({ name: "settings", from: "metabolism" })
           }
+          onDirtyChange={setMetabolismDirty}
           onSaveProfile={updateMetabolismProfile}
           onSaveDay={updateMetabolismDay}
         />
@@ -776,7 +970,7 @@ export default function App() {
       {screen.name === "settings" && (
         <SettingsScreen
           settings={settings}
-          apiKey={credential.apiKey}
+          apiKeyAvailable={Boolean(credential.apiKey)}
           remembered={credential.remembered}
           recordCount={records.length}
           metabolismRecordCount={metabolismEntries.length}
@@ -806,6 +1000,19 @@ export default function App() {
         <AppNavigation
           active={screen.name === "home" ? "diet" : "metabolism"}
           onChange={(section) => {
+            if (
+              screen.name === "metabolism" &&
+              section === "diet" &&
+              metabolismDirty &&
+              !window.confirm(
+                "저장하지 않은 대사량 입력이 있습니다. 변경사항을 버리고 식단 화면으로 이동할까요?"
+              )
+            ) {
+              return;
+            }
+            if (screen.name === "metabolism" && section === "diet") {
+              setMetabolismDirty(false);
+            }
             if (
               section === "metabolism" &&
               selectedDay > getTodayDayKey(settings.dayStartHour)
