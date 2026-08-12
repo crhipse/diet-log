@@ -23,6 +23,9 @@ export const CORE_NUTRIENT_KEYS = [
   "fatG"
 ] as const satisfies readonly (keyof Nutrients)[];
 
+export const NUTRIENT_SCALE_MIN = 0.1;
+export const NUTRIENT_SCALE_MAX = 5;
+
 const DISPLAY_PRECISION: Record<keyof Nutrients, number> = {
   energyKcal: 0,
   carbsG: 1,
@@ -74,6 +77,34 @@ export function sumNutrients(
 
 export function sumFoods(foods: readonly FoodItem[]): DailyTotals {
   return sumNutrients(foods.map((food) => food.nutrients));
+}
+
+/**
+ * Scales every known nutrient while preserving unknown values as null. The
+ * original foods are left untouched so the edit screen can still be canceled.
+ */
+export function scaleFoodNutrients(
+  foods: readonly FoodItem[],
+  multiplier: number
+): FoodItem[] {
+  if (
+    !Number.isFinite(multiplier) ||
+    multiplier < NUTRIENT_SCALE_MIN ||
+    multiplier > NUTRIENT_SCALE_MAX
+  ) {
+    throw new RangeError(
+      `배율은 ${NUTRIENT_SCALE_MIN}~${NUTRIENT_SCALE_MAX} 사이여야 합니다.`
+    );
+  }
+
+  return foods.map((food) => {
+    const nutrients = {} as Nutrients;
+    for (const key of NUTRIENT_KEYS) {
+      const value = food.nutrients[key];
+      nutrients[key] = isKnown(value) ? rounded(value * multiplier) : null;
+    }
+    return { ...food, nutrients, userEdited: true };
+  });
 }
 
 export function sumRecords(records: readonly FoodRecord[]): DailyTotals {

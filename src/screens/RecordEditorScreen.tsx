@@ -39,6 +39,8 @@ interface CopyResult {
   photos: PendingPhoto[];
 }
 
+const RECENT_COPY_RECORD_LIMIT = 36;
+
 interface RecordEditorScreenProps {
   initialRecord?: FoodRecord;
   initialPhotos?: PendingPhoto[];
@@ -453,7 +455,7 @@ export default function RecordEditorScreen({
       {copyOpen && (
         <div className="modal-backdrop" role="presentation">
           <section
-            className="bottom-sheet"
+            className="bottom-sheet bottom-sheet--copy"
             role="dialog"
             aria-modal="true"
             aria-labelledby="copy-title"
@@ -473,7 +475,7 @@ export default function RecordEditorScreen({
               </button>
             </header>
             <div className="copy-list">
-              {recentRecords.slice(0, 12).map((record) => (
+              {recentRecords.slice(0, RECENT_COPY_RECORD_LIMIT).map((record) => (
                 <button
                   type="button"
                   key={record.id}

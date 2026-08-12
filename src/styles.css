@@ -756,6 +756,78 @@ p {
   gap: 11px;
 }
 
+.nutrient-scale-control {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 13px;
+  padding: 13px;
+  border: 1px solid #e2d8c9;
+  border-radius: var(--radius-md);
+  background: #fffaf1;
+}
+
+.nutrient-scale-control__heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.nutrient-scale-control__heading > svg {
+  flex: none;
+  margin-top: 1px;
+  color: #8b5b3f;
+}
+
+.nutrient-scale-control__heading > span {
+  display: grid;
+  gap: 3px;
+}
+
+.nutrient-scale-control__heading strong {
+  font-size: 13px;
+}
+
+.nutrient-scale-control__heading small,
+.nutrient-scale-control > p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.nutrient-scale-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.nutrient-scale-presets button {
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: white;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.nutrient-scale-presets button[aria-pressed="true"] {
+  border-color: #9f684b;
+  color: #7a4329;
+  background: #f8eade;
+}
+
+.nutrient-scale-control__apply {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.nutrient-scale-control__apply .secondary-button {
+  min-height: 42px;
+  padding: 8px 13px;
+  white-space: nowrap;
+}
+
 .food-edit-card {
   padding: 13px;
   border: 1px solid var(--line);
@@ -861,9 +933,18 @@ p {
   margin-top: 16px;
 }
 
+.bottom-sheet--copy {
+  overflow: hidden;
+}
+
 .copy-list {
   display: grid;
+  max-height: 64dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   gap: 7px;
+  padding-right: 2px;
 }
 
 .copy-list > button {
@@ -1346,7 +1427,7 @@ p {
 .toast {
   position: fixed;
   z-index: 200;
-  top: calc(14px + env(safe-area-inset-top));
+  bottom: calc(92px + env(safe-area-inset-bottom));
   left: 50%;
   width: calc(100% - 32px);
   max-width: 440px;
@@ -1362,6 +1443,7 @@ p {
   text-align: center;
   transform: translateX(-50%);
   animation: toast-in 180ms ease-out both;
+  pointer-events: none;
 }
 
 .toast--error {
@@ -1371,7 +1453,7 @@ p {
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translate(-50%, -10px);
+    transform: translate(-50%, 10px);
   }
 }
 
@@ -1435,7 +1517,7 @@ p {
   }
 
   .toast {
-    top: 36px;
+    bottom: 116px;
   }
 }
 

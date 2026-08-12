@@ -1,6 +1,10 @@
 import { EMPTY_NUTRIENTS } from "../constants";
 import type { FoodItem, FoodRecord } from "../types";
-import { completeEnergyTotal, sumFoods } from "./nutrition";
+import {
+  completeEnergyTotal,
+  scaleFoodNutrients,
+  sumFoods
+} from "./nutrition";
 
 function food(
   id: string,
@@ -73,5 +77,40 @@ describe("영양성분 합계", () => {
         record("b", [food("b", { energyKcal: 300 })])
       ])
     ).toBe(800);
+  });
+});
+
+describe("영양성분 배율 조정", () => {
+  it("모든 알려진 영양성분에 같은 배율을 적용하고 null은 유지한다", () => {
+    const original = food("scaled", {
+      energyKcal: 106,
+      carbsG: 1,
+      proteinG: 24,
+      fatG: 0.7,
+      sugarG: 0.4,
+      sodiumMg: 82,
+      fiberG: null,
+      saturatedFatG: 0.2
+    });
+
+    const [scaled] = scaleFoodNutrients([original], 1.2);
+
+    expect(scaled.nutrients).toEqual({
+      energyKcal: 127.2,
+      carbsG: 1.2,
+      proteinG: 28.8,
+      fatG: 0.84,
+      sugarG: 0.48,
+      sodiumMg: 98.4,
+      fiberG: null,
+      saturatedFatG: 0.24
+    });
+    expect(scaled.userEdited).toBe(true);
+    expect(original.nutrients.energyKcal).toBe(106);
+  });
+
+  it("허용 범위를 벗어난 배율을 거부한다", () => {
+    expect(() => scaleFoodNutrients([], 0)).toThrow("0.1~5");
+    expect(() => scaleFoodNutrients([], 5.1)).toThrow("0.1~5");
   });
 });
