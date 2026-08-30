@@ -11,6 +11,7 @@ import type {
   ExerciseCategory,
   ExerciseIntensity,
   ExerciseTemplate,
+  FavoriteFood,
   FoodItem,
   FoodRecord,
   FoodSource,
@@ -37,6 +38,7 @@ import {
   groupRecordsByDay
 } from "./date";
 import { sumFoods, sumRecords } from "./nutrition";
+import { listFavoriteFoods, validateFavoriteFood } from "./favorites";
 import {
   validateDailyMetabolismEntry,
   validateDateKey,
@@ -73,6 +75,7 @@ export interface ImportBackupResult {
   metabolismEntriesImported: number;
   metabolismEntriesSkipped: number;
   metabolismProfileImported: boolean;
+  favoriteFoodsImported: number;
 }
 
 const SOURCES = new Set<FoodSource>(["ai", "manual", "copied"]);
@@ -242,6 +245,20 @@ function foodAt(value: unknown, path: string): FoodItem {
     source,
     userEdited: booleanAt(item.userEdited, `${path}.userEdited`)
   };
+}
+
+function favoriteFoodAt(value: unknown, path: string): FavoriteFood {
+  const item = objectAt(value, path);
+  const favorite: FavoriteFood = {
+    id: stringAt(item.id, `${path}.id`, { maxLength: 500 }),
+    name: stringAt(item.name, `${path}.name`, { maxLength: 2_000 }),
+    amountText: stringAt(item.amountText, `${path}.amountText`, { allowEmpty: true, maxLength: 10_000 }),
+    nutrients: nutrientsAt(item.nutrients, `${path}.nutrients`),
+    createdAt: isoDateAt(item.createdAt, `${path}.createdAt`),
+    updatedAt: isoDateAt(item.updatedAt, `${path}.updatedAt`)
+  };
+  validateFavoriteFood(favorite);
+  return favorite;
 }
 
 function analysisAt(value: unknown, path: string): AnalysisMeta {
@@ -815,9 +832,20 @@ export function parseBackup(value: string | unknown): DietLogBackup {
           return entries;
         })();
 
+  let favoriteFoods: FavoriteFood[] | undefined;
+  if (root.favoriteFoods !== undefined) {
+    if (!Array.isArray(root.favoriteFoods)) invalid("favoriteFoods", "목록이어야 합니다.");
+    favoriteFoods = root.favoriteFoods.map((favorite, index) =>
+      favoriteFoodAt(favorite, `favoriteFoods[${index}]`));
+    if (new Set(favoriteFoods.map((food) => food.id)).size !== favoriteFoods.length) {
+      invalid("favoriteFoods", "즐겨찾기 ID가 중복되었습니다.");
+    }
+  }
+
   return {
     app: APP_NAME,
     schemaVersion: 2,
+    favoriteFoods,
     // Backups created before this flag existed always included every photo.
     photosIncluded:
       root.photosIncluded == null
@@ -863,18 +891,20 @@ export async function createBackup(
   options: BackupOptions = {}
 ): Promise<DietLogBackup> {
   const includePhotos = options.includePhotos ?? true;
-  const [settings, records, metabolismProfile, metabolismEntries] =
+  const [settings, records, metabolismProfile, metabolismEntries, favoriteFoods] =
     await Promise.all([
     getSettings(),
     listRecords(),
     getMetabolismProfile(),
-    listDailyMetabolismEntries()
+    listDailyMetabolismEntries(),
+    listFavoriteFoods()
   ]);
   if (!includePhotos) {
     return {
       app: APP_NAME,
       schemaVersion: 2,
       photosIncluded: false,
+      favoriteFoods,
       exportedAt: new Date().toISOString(),
       settings,
       records: records.map((record) => ({ ...record, photoIds: [] })),
@@ -908,6 +938,7 @@ export async function createBackup(
     app: APP_NAME,
     schemaVersion: 2,
     photosIncluded: true,
+    favoriteFoods,
     exportedAt: new Date().toISOString(),
     settings,
     records,
@@ -962,15 +993,32 @@ export async function importBackup(
   let metabolismEntriesImported = backup.metabolismEntries.length;
   let metabolismEntriesSkipped = 0;
   let metabolismProfileImported = Boolean(backup.metabolismProfile);
+  let favoriteFoodsImported = 0;
 
   await db.transaction(
     "rw",
-    db.records,
+    [db.records,
     db.photos,
     db.settings,
     db.metabolismProfiles,
     db.dailyMetabolismEntries,
+    db.favoriteFoods],
     async () => {
+      // Older backups have no favorites field: preserve data they could never
+      // contain, even in replace mode. An explicit [] does replace it.
+      if (backup.favoriteFoods !== undefined) {
+        if (mode === "replace") {
+          await db.favoriteFoods.clear();
+          await db.favoriteFoods.bulkPut(backup.favoriteFoods);
+          favoriteFoodsImported = backup.favoriteFoods.length;
+        } else {
+          const stored = await db.favoriteFoods.bulkGet(backup.favoriteFoods.map((food) => food.id));
+          const incoming = backup.favoriteFoods.filter((food, index) => !stored[index] ||
+            Date.parse(food.updatedAt) > Date.parse(stored[index]!.updatedAt));
+          await db.favoriteFoods.bulkPut(incoming);
+          favoriteFoodsImported = incoming.length;
+        }
+      }
       if (mode === "replace") {
         await db.photos.clear();
         await db.records.clear();
@@ -1113,7 +1161,8 @@ export async function importBackup(
     photosImported,
     metabolismEntriesImported,
     metabolismEntriesSkipped,
-    metabolismProfileImported
+    metabolismProfileImported,
+    favoriteFoodsImported
   };
 }
 

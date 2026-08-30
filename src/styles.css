@@ -756,6 +756,29 @@ p {
   gap: 11px;
 }
 
+.food-editor-fieldset {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.favorite-save .text-button { min-height: 36px; font-size: 12px; }
+.favorite-save p { font-size: 12px; color: var(--muted); }
+.favorite-sheet { display: flex; flex-direction: column; overflow: hidden; }
+.favorite-sheet > .bottom-sheet__header, .favorite-sheet > .field, .favorite-new { flex-shrink: 0; }
+.favorite-sheet__body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px; }
+.favorite-new { margin: 12px 0; }
+.favorite-list { display: grid; gap: 10px; margin-top: 10px; }
+.favorite-item { padding: 13px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.favorite-item > strong { display: block; overflow-wrap: anywhere; font-size: 15px; }
+.favorite-item > p { margin-top: 5px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.favorite-item__actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.favorite-item__actions .secondary-button { flex: 1; }
+.favorite-item__actions .icon-button { flex: none; }
+.favorite-error { padding: 10px; color: var(--danger); font-size: 13px; }
+.editor-screen__body { padding-bottom: calc(260px + env(safe-area-inset-bottom)); }
+
 .nutrient-scale-control {
   display: grid;
   gap: 10px;

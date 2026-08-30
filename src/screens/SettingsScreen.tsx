@@ -121,6 +121,7 @@ export default function SettingsScreen({
       !window.confirm(
         `현재 저장된 식단 ${recordCount}개와 대사량 ${metabolismRecordCount}일, ` +
           "기본 정보·활동 템플릿을 모두 지우고 백업으로 교체할까요? " +
+          "백업에 즐겨찾기가 포함되어 있으면 현재 즐겨찾기도 교체됩니다. " +
           "이 작업은 되돌릴 수 없습니다."
       )
     ) {
@@ -493,8 +494,8 @@ export default function SettingsScreen({
           </div>
           <p className="field-help">
             두 백업 모두 API 키를 포함하지 않습니다. 사진 없는 백업을
-            복원해도 식단, 영양성분, 대사량 기록과 활동 템플릿은 모두
-            보존됩니다.
+            복원해도 식단, 영양성분, 대사량 기록, 활동 템플릿과 즐겨찾기는 모두
+            보존됩니다. 즐겨찾기 항목이 없는 옛 백업은 현재 즐겨찾기를 그대로 둡니다.
           </p>
         </section>
 

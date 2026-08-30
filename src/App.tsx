@@ -777,7 +777,7 @@ export default function App() {
       setSelectedDay(getTodayDayKey(loadedSettings.dayStartHour));
       notify(
         `${result.recordsImported}개 식단, ${result.photosImported}개 사진, ` +
-          `${result.metabolismEntriesImported}개 대사량 기록을 ${
+          `${result.metabolismEntriesImported}개 대사량 기록, ${result.favoriteFoodsImported}개 즐겨찾기를 ${
             mode === "replace" ? "복원" : "병합"
           }했어요.${
           result.recordsSkipped > 0

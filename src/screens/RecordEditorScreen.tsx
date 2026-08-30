@@ -8,11 +8,13 @@ import {
   KeyRound,
   LoaderCircle,
   Sparkles,
+  Star,
   Trash2,
   X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import FoodEditor, { createEmptyFood } from "../components/FoodEditor";
+import FavoriteFoodsSheet from "../components/FavoriteFoodsSheet";
 import { MAX_PHOTOS_PER_RECORD } from "../constants";
 import {
   composeDateTimeLocalValue,
@@ -93,6 +95,7 @@ export default function RecordEditorScreen({
     Boolean(initialRecord?.foods.length)
   );
   const [copyOpen, setCopyOpen] = useState(false);
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [quickKeyOpen, setQuickKeyOpen] = useState(false);
   const [quickKey, setQuickKey] = useState("");
   const [quickRemember, setQuickRemember] = useState(false);
@@ -390,6 +393,8 @@ export default function RecordEditorScreen({
             <FoodEditor
               foods={foods.length > 0 ? foods : [createEmptyFood()]}
               onChange={setFoods}
+              disabled={isBusy}
+              onNotify={onNotify}
             />
           </section>
         )}
@@ -439,6 +444,11 @@ export default function RecordEditorScreen({
           </>
         )}
 
+        <button className="text-button" type="button" disabled={isBusy}
+          onClick={() => setFavoritesOpen(true)}>
+          <Star size={16} aria-hidden="true" />즐겨찾기에서 추가
+        </button>
+
         {recentRecords.length > 0 && !initialRecord && (
           <button
             className="text-button"
@@ -451,6 +461,16 @@ export default function RecordEditorScreen({
           </button>
         )}
       </footer>
+
+      {favoritesOpen && (
+        <FavoriteFoodsSheet onClose={() => setFavoritesOpen(false)} onNotify={onNotify}
+          onPick={(food) => {
+            setFoods((current) => [...current.filter((item) => item.name.trim() ||
+              item.amountText.trim() || Object.values(item.nutrients).some((value) => value !== null)), food]);
+            setManualMode(true);
+            onNotify("즐겨찾기 음식을 추가했어요. 양을 확인한 뒤 기록을 저장해주세요.");
+          }} />
+      )}
 
       {copyOpen && (
         <div className="modal-backdrop" role="presentation">

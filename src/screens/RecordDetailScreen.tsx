@@ -5,25 +5,19 @@ import {
   Edit3,
   LoaderCircle,
   RefreshCw,
-  SlidersHorizontal,
   Sparkles,
   Trash2,
   X
 } from "lucide-react";
 import { useState } from "react";
 import FoodEditor from "../components/FoodEditor";
+import SaveFavoriteButton from "../components/SaveFavoriteButton";
 import {
   formatKcal,
   formatMacroLine,
   formatNumber,
   formatRecordDateTime
 } from "../lib/format";
-import {
-  hasAnyNutrientValue,
-  NUTRIENT_SCALE_MAX,
-  NUTRIENT_SCALE_MIN,
-  scaleFoodNutrients
-} from "../lib/nutrition";
 import type {
   FoodAnalysisResult,
   FoodItem,
@@ -58,7 +52,6 @@ export default function RecordDetailScreen({
 }: RecordDetailScreenProps) {
   const [editingNumbers, setEditingNumbers] = useState(false);
   const [draftFoods, setDraftFoods] = useState<FoodItem[]>(record.foods);
-  const [nutrientMultiplier, setNutrientMultiplier] = useState("1");
   const [showExtras, setShowExtras] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [candidate, setCandidate] = useState<FoodAnalysisResult | null>(null);
@@ -88,28 +81,6 @@ export default function RecordDetailScreen({
     if (saved) setEditingNumbers(false);
   };
 
-  const applyNutrientMultiplier = () => {
-    const multiplier = Number(nutrientMultiplier);
-    if (
-      !Number.isFinite(multiplier) ||
-      multiplier < NUTRIENT_SCALE_MIN ||
-      multiplier > NUTRIENT_SCALE_MAX
-    ) {
-      onNotify(
-        `배율은 ${NUTRIENT_SCALE_MIN}~${NUTRIENT_SCALE_MAX} 사이로 입력해주세요.`,
-        "error"
-      );
-      return;
-    }
-    if (!draftFoods.some((food) => hasAnyNutrientValue(food.nutrients))) {
-      onNotify("배율을 적용할 영양성분이 없습니다.", "error");
-      return;
-    }
-
-    setDraftFoods(scaleFoodNutrients(draftFoods, multiplier));
-    setNutrientMultiplier("1");
-    onNotify(`모든 영양성분에 ×${multiplier}를 적용했어요.`);
-  };
 
   const reanalyze = async () => {
     setReanalyzing(true);
@@ -219,67 +190,14 @@ export default function RecordDetailScreen({
                 aria-label="수정 취소"
                 onClick={() => {
                   setDraftFoods(record.foods);
-                  setNutrientMultiplier("1");
                   setEditingNumbers(false);
                 }}
               >
                 <X size={18} aria-hidden="true" />
               </button>
             </div>
-            <div className="nutrient-scale-control">
-              <div className="nutrient-scale-control__heading">
-                <SlidersHorizontal size={18} aria-hidden="true" />
-                <span>
-                  <strong>전체 영양성분 배율 조정</strong>
-                  <small>
-                    모든 음식의 칼로리·탄단지와 추가 영양소에 같은 배율을
-                    적용해요.
-                  </small>
-                </span>
-              </div>
-              <div className="nutrient-scale-presets" aria-label="빠른 배율 선택">
-                {[0.5, 0.8, 1.2, 1.5].map((multiplier) => (
-                  <button
-                    type="button"
-                    key={multiplier}
-                    aria-pressed={nutrientMultiplier === String(multiplier)}
-                    onClick={() => setNutrientMultiplier(String(multiplier))}
-                  >
-                    ×{multiplier}
-                  </button>
-                ))}
-              </div>
-              <div className="nutrient-scale-control__apply">
-                <label className="field field--number">
-                  <span>직접 배율</span>
-                  <span className="number-input">
-                    <input
-                      type="number"
-                      min={NUTRIENT_SCALE_MIN}
-                      max={NUTRIENT_SCALE_MAX}
-                      step="0.1"
-                      inputMode="decimal"
-                      value={nutrientMultiplier}
-                      aria-label="전체 영양성분 배율"
-                      onChange={(event) =>
-                        setNutrientMultiplier(event.target.value)
-                      }
-                    />
-                    <span>배</span>
-                  </span>
-                </label>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={isBusy || Number(nutrientMultiplier) === 1}
-                  onClick={applyNutrientMultiplier}
-                >
-                  배율 적용
-                </button>
-              </div>
-              <p>배율 적용 후 아래 숫자를 확인하고 ‘수정 내용 저장’을 눌러주세요.</p>
-            </div>
-            <FoodEditor foods={draftFoods} onChange={setDraftFoods} compact />
+            <FoodEditor foods={draftFoods} onChange={setDraftFoods} compact
+              disabled={isBusy} onNotify={onNotify} />
             <button
               className="primary-button"
               type="button"
@@ -325,6 +243,7 @@ export default function RecordDetailScreen({
                   <p className="food-detail-row__macros">
                     {formatMacroLine(food.nutrients)}
                   </p>
+                  <SaveFavoriteButton food={food} onNotify={onNotify} disabled={isBusy} />
                   {showExtras && (
                     <dl className="extra-nutrients">
                       <div>
@@ -403,7 +322,6 @@ export default function RecordDetailScreen({
             disabled={isBusy || reanalyzing}
             onClick={() => {
               setDraftFoods(record.foods);
-              setNutrientMultiplier("1");
               setEditingNumbers(true);
             }}
           >

@@ -4,11 +4,17 @@ import { EMPTY_NUTRIENTS } from "../constants";
 import { inputNumber, toNullableNumber } from "../lib/format";
 import { createId } from "../lib/id";
 import type { FoodItem, Nutrients } from "../types";
+import NutrientScaleControl, { type Notify } from "./NutrientScaleControl";
+import SaveFavoriteButton from "./SaveFavoriteButton";
 
 interface FoodEditorProps {
   foods: FoodItem[];
   onChange: (foods: FoodItem[]) => void;
   compact?: boolean;
+  disabled?: boolean;
+  onNotify?: Notify;
+  singleFood?: boolean;
+  allowFavorites?: boolean;
 }
 
 interface NutrientField {
@@ -45,7 +51,11 @@ export function createEmptyFood(): FoodItem {
 export default function FoodEditor({
   foods,
   onChange,
-  compact = false
+  compact = false,
+  disabled = false,
+  onNotify,
+  singleFood = false,
+  allowFavorites = true
 }: FoodEditorProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -92,21 +102,24 @@ export default function FoodEditor({
   };
 
   return (
-    <div className="food-editor">
+    <fieldset className="food-editor food-editor-fieldset" disabled={disabled}>
+      {foods.length > 0 && (
+        <NutrientScaleControl foods={foods} onChange={onChange} disabled={disabled} onNotify={onNotify} />
+      )}
       {foods.map((food, index) => {
         const isExpanded = expanded.has(food.id);
         return (
           <section className="food-edit-card" key={food.id}>
             <div className="food-edit-card__heading">
               <span className="eyebrow">음식 {index + 1}</span>
-              <button
+              {!singleFood && <button
                 className="icon-button icon-button--small icon-button--danger"
                 type="button"
                 aria-label={`음식 ${index + 1} 삭제`}
                 onClick={() => removeFood(food.id)}
               >
                 <Trash2 size={17} aria-hidden="true" />
-              </button>
+              </button>}
             </div>
 
             <div className="field-grid field-grid--food-name">
@@ -178,19 +191,20 @@ export default function FoodEditor({
                 ))}
               </div>
             )}
+            {allowFavorites && <SaveFavoriteButton food={food} onNotify={onNotify} disabled={disabled} />}
           </section>
         );
       })}
 
-      <button
+      {!singleFood && <button
         className="secondary-button secondary-button--dashed"
         type="button"
         onClick={() => onChange([...foods, createEmptyFood()])}
       >
         <Plus size={18} aria-hidden="true" />
         음식 추가
-      </button>
-    </div>
+      </button>}
+    </fieldset>
   );
 }
 

@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from "../constants";
 import type {
   AppSettings,
   DailyMetabolismEntry,
+  FavoriteFood,
   FoodRecord,
   MetabolismProfile,
   PhotoAsset
@@ -24,6 +25,7 @@ export class DietLogDatabase extends Dexie {
   settings!: Table<AppSettings, "app">;
   metabolismProfiles!: Table<MetabolismProfile, "metabolism">;
   dailyMetabolismEntries!: Table<DailyMetabolismEntry, string>;
+  favoriteFoods!: Table<FavoriteFood, string>;
 
   constructor(name = DATABASE_NAME) {
     super(name);
@@ -38,6 +40,9 @@ export class DietLogDatabase extends Dexie {
       settings: "&id",
       metabolismProfiles: "&id, updatedAt",
       dailyMetabolismEntries: "&id, date, updatedAt"
+    });
+    this.version(3).stores({
+      favoriteFoods: "&id, name, updatedAt"
     });
   }
 }

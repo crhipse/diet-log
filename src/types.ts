@@ -41,6 +41,15 @@ export interface AnalysisMeta {
   outputTokens?: number;
 }
 
+export interface FavoriteFood {
+  id: string;
+  name: string;
+  amountText: string;
+  nutrients: Nutrients;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface FoodRecord {
   id: string;
   consumedAt: string;
@@ -89,6 +98,8 @@ export interface DietLogBackup {
   photos: BackupPhoto[];
   metabolismProfile: MetabolismProfile | null;
   metabolismEntries: DailyMetabolismEntry[];
+  /** Absent in older backups; importing those preserves existing favorites. */
+  favoriteFoods?: FavoriteFood[];
 }
 
 export interface DailyTotals extends Nutrients {
