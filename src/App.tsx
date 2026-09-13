@@ -12,6 +12,7 @@ import RecordEditorScreen, {
 import SettingsScreen from "./screens/SettingsScreen";
 import { analyzeFoodRecord, testApiKey } from "./lib/ai";
 import {
+  db,
   deleteRecordWithPhotos,
   getMetabolismProfile,
   getPhotosForRecord,
@@ -25,6 +26,7 @@ import {
   saveRecord,
   saveSettings
 } from "./lib/db";
+import { automaticDietCompletionDates, effectiveDietCompletion, startDietAutoCompletion } from "./lib/dietCompletion";
 import {
   addDays,
   formatDayLabel,
@@ -108,6 +110,7 @@ export default function App() {
   const [settings, setSettingsState] = useState<AppSettings | null>(null);
   const [selectedDay, setSelectedDay] = useState("");
   const [todayDay, setTodayDay] = useState("");
+  const [completionNow, setCompletionNow] = useState(() => new Date());
   const [credential, setCredential] = useState(loadApiKey);
   const [storagePersisted, setStoragePersisted] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
@@ -141,6 +144,11 @@ export default function App() {
     setMetabolismProfile(profile ?? null);
     setMetabolismEntries(entries);
   }, []);
+
+  useEffect(() => startDietAutoCompletion(db, {
+    onCheck: setCompletionNow,
+    onError: () => notify("식단 자동 완료를 갱신하지 못했습니다. 앱을 다시 열면 재시도합니다.", "error")
+  }), [notify]);
 
   useEffect(() => {
     let active = true;
@@ -224,11 +232,16 @@ export default function App() {
   const selectedMetabolismEntry =
     metabolismEntries.find((entry) => entry.date === selectedDay) ?? null;
 
+  const automaticDietDays = useMemo(() => settings
+    ? automaticDietCompletionDates(records, settings.dayStartHour, completionNow) : new Set<string>(),
+  [records, settings, completionNow]);
+
   const learningEntries = useMemo(() => {
     if (!settings) return [];
     const today = getTodayDayKey(settings.dayStartHour);
-    return metabolismEntries.filter((entry) => entry.date <= today);
-  }, [metabolismEntries, settings]);
+    return metabolismEntries.filter((entry) => entry.date <= today)
+      .map(entry => effectiveDietCompletion(entry, automaticDietDays.has(entry.date), completionNow));
+  }, [metabolismEntries, settings, automaticDietDays, completionNow]);
 
   const intakeByDate = useMemo(() => {
     if (!settings) return {};
@@ -917,6 +930,7 @@ export default function App() {
           metabolismRecordDays={metabolismRecordDays}
           profile={metabolismProfile}
           entry={selectedMetabolismEntry}
+          automaticDietComplete={automaticDietDays.has(selectedDay)}
           history={learningEntries}
           intakeByDate={intakeByDate}
           isBusy={busy}

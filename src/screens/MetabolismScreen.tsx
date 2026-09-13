@@ -52,6 +52,7 @@ interface MetabolismScreenProps {
   metabolismRecordDays: readonly string[];
   profile: MetabolismProfile | null;
   entry: DailyMetabolismEntry | null;
+  automaticDietComplete?: boolean;
   history: DailyMetabolismEntry[];
   intakeByDate: Readonly<Record<string, number>>;
   isBusy?: boolean;
@@ -234,6 +235,7 @@ export default function MetabolismScreen({
   metabolismRecordDays,
   profile,
   entry,
+  automaticDietComplete = false,
   history,
   intakeByDate,
   isBusy = false,
@@ -299,9 +301,20 @@ export default function MetabolismScreen({
   };
 
   const changeEntryDraft = (next: DailyMetabolismEntry) => {
-    setEntryDraft(next);
+    setEntryDraft(automaticDietComplete ? {
+      ...next, dietComplete: true,
+      ...(!entryDraft.dietComplete || entryDraft.dietCompletedAutomatically ? { dietCompletedAutomatically: true } : {})
+    } : next);
     setEntryDirty(true);
   };
+
+  // Render time-based completion without creating a weight-bearing entry or replacing
+  // an unsaved draft when the clock crosses 02:00.
+  const visibleEntry = automaticDietComplete && !entryDraft.dietComplete
+    ? { ...entryDraft, dietComplete: true, dietCompletedAutomatically: true }
+    : !automaticDietComplete && entryDraft.dietCompletedAutomatically
+      ? { ...entryDraft, dietComplete: false, dietCompletedAutomatically: undefined }
+      : entryDraft;
 
   const requestDiscard = (
     change: () => void,
@@ -442,7 +455,7 @@ export default function MetabolismScreen({
         updatedAt: now
       },
       {
-        ...entryDraft,
+        ...visibleEntry,
         id: selectedDay,
         date: selectedDay,
         createdAt: entryDraft.createdAt || now,
@@ -574,7 +587,7 @@ export default function MetabolismScreen({
         {mode === "detail" && (
           <DetailPanel
             profile={profileDraft}
-            entry={entryDraft}
+            entry={visibleEntry}
             estimate={dailyEstimate}
             isBusy={isBusy}
             onProfileChange={changeProfileDraft}
@@ -587,7 +600,7 @@ export default function MetabolismScreen({
         {mode === "learning" && (
           <LearningPanel
             learning={learning}
-            entry={entryDraft}
+            entry={visibleEntry}
             isBusy={isBusy}
             canSave={Boolean(bmr)}
             onEntryChange={changeEntryDraft}
@@ -1043,7 +1056,7 @@ function DetailPanel({
           <CalendarCheck size={20} aria-hidden="true" />
           <span>
             <strong>오늘 식단 기록 완료</strong>
-            <small>하루 섭취량이 모두 기록됐다면 켜 주세요. 개인화 학습에 사용해요.</small>
+            <small>식단이 기록된 날은 다음 날 새벽 2시(한국 시간)에 자동 완료돼요. 개인화 학습에 사용해요.</small>
           </span>
         </span>
       </label>
@@ -1956,7 +1969,7 @@ function LearningPanel({
             <CalendarCheck size={19} aria-hidden="true" />
             <span>
               <strong>오늘 식단 기록 완료</strong>
-              <small>빠뜨린 음식이 없을 때 체크해 주세요.</small>
+              <small>식단이 기록된 날은 다음 날 새벽 2시(한국 시간)에 자동 완료돼요.</small>
             </span>
           </span>
         </label>

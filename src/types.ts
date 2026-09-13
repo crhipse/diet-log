@@ -210,6 +210,8 @@ export interface DailyMetabolismEntry {
   bodyFatPercent?: number;
   steps?: number;
   dietComplete: boolean;
+  /** Source-only provenance; automatic closure is not an explicit manual confirmation. */
+  dietCompletedAutomatically?: boolean;
   jobActivities: DailyWorkActivity[];
   exercises: DailyExercise[];
   createdAt: string;

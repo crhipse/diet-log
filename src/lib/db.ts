@@ -17,6 +17,7 @@ import {
 import type { GoalSettings } from "./goalHistory";
 import { validateGoalSettings } from "./goalHistory";
 import type { ChronicleSyncState } from "./chronicleSyncTypes";
+import { completionForSavedEntry } from "./dietCompletion";
 
 export const DATABASE_NAME = "diet-log";
 
@@ -281,8 +282,11 @@ export async function saveDailyMetabolismEntry(
   entry: DailyMetabolismEntry
 ): Promise<DailyMetabolismEntry> {
   validateDailyMetabolismEntry(entry);
-  await db.dailyMetabolismEntries.put(entry);
-  return entry;
+  return db.transaction("rw", [db.records, db.settings, db.dailyMetabolismEntries], async () => {
+    const next = await completionForSavedEntry(db, entry);
+    await db.dailyMetabolismEntries.put(next);
+    return next;
+  });
 }
 
 /**
@@ -298,11 +302,13 @@ export async function saveMetabolismProfileAndEntry(
   validateDailyMetabolismEntry(entry);
   await db.transaction(
     "rw",
+    db.records,
+    db.settings,
     db.metabolismProfiles,
     db.dailyMetabolismEntries,
     async () => {
       await db.metabolismProfiles.put(profile);
-      await db.dailyMetabolismEntries.put(entry);
+      await db.dailyMetabolismEntries.put(await completionForSavedEntry(db, entry));
     }
   );
 }

@@ -42,7 +42,8 @@ export function projectDietSnapshot(records: FoodRecord[], settings: AppSettings
       id: entry.id,
       date: entry.date,
       weightKg: entry.weightKg,
-      dietComplete: entry.dietComplete,
+      // Server applies its clock to automatic closure; keep manual intent unchanged.
+      dietComplete: entry.dietComplete && !entry.dietCompletedAutomatically,
       updatedAt: entry.updatedAt
     })).sort(byId)
   };

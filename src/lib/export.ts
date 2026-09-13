@@ -701,6 +701,9 @@ function dailyMetabolismEntryAt(
             max: 200_000
           }) as number),
     dietComplete: booleanAt(item.dietComplete, `${path}.dietComplete`),
+    ...(item.dietCompletedAutomatically === undefined ? {} : {
+      dietCompletedAutomatically: booleanAt(item.dietCompletedAutomatically, `${path}.dietCompletedAutomatically`)
+    }),
     jobActivities: item.jobActivities.map((activity, index) =>
       dailyWorkActivityAt(activity, `${path}.jobActivities[${index}]`)
     ),
