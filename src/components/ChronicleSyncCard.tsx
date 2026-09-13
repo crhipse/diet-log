@@ -10,11 +10,11 @@ export function chronicleStatusText(status: ChronicleSyncStatus): string {
   if (status.phase === "error") return "전송을 완료하지 못했습니다. 기록은 보관 중입니다. 다시 시도해 주세요.";
   if (status.phase === "offline") return "오프라인 · 앱을 다시 열거나 인터넷이 연결되면 전송합니다.";
   if (status.phase === "retry") return "연결 대기 · 잠시 후 자동으로 다시 시도합니다.";
-  if (status.phase === "connecting") return "생활연대기에 연결 중…";
+  if (status.phase === "connecting") return "위버멘쉬에 연결 중…";
   if (status.phase === "syncing" || status.phase === "pending") return "수치 전송 대기 중 · 식단 입력을 계속할 수 있습니다.";
-  if (status.needsReview) return "전송 완료 · 생활연대기에서 겹친 기록 확인이 필요합니다.";
+  if (status.needsReview) return "전송 완료 · 위버멘쉬에서 겹친 기록 확인이 필요합니다.";
   if (status.connected) return "연결됨 · 기록을 바꾸면 자동으로 전송합니다.";
-  return "생활연대기에 식단 수치를 자동으로 보냅니다.";
+  return "위버멘쉬에 식단 수치를 자동으로 보냅니다.";
 }
 
 export default function ChronicleSyncCard() {
@@ -37,11 +37,11 @@ export default function ChronicleSyncCard() {
   return <section className="settings-card chronicle-sync-card" aria-labelledby="chronicle-sync-title">
     <div className="settings-card__title">
       <span className="settings-card__icon"><Link2 size={20} /></span>
-      <div><h2 id="chronicle-sync-title">생활연대기 자동 연동</h2><p role="status" aria-live="polite">{chronicleStatusText(status)}</p></div>
+      <div><h2 id="chronicle-sync-title">위버멘쉬 자동 연동</h2><p role="status" aria-live="polite">{chronicleStatusText(status)}</p></div>
     </div>
     {canConnect && <div className="chronicle-sync-card__connect">
-      <p className="field-hint">생활연대기 설정 → 자동 연동 관리 → 연결 코드 만들기에서 코드를 복사해 이곳에 한 번 붙여넣으세요.</p>
-      <label className="field-label" htmlFor="chronicle-pairing-code">생활연대기 연결 코드</label>
+      <p className="field-hint">위버멘쉬 설정 → 자동 연동 관리 → 연결 코드 만들기에서 코드를 복사해 이곳에 한 번 붙여넣으세요.</p>
+      <label className="field-label" htmlFor="chronicle-pairing-code">위버멘쉬 연결 코드</label>
       <input id="chronicle-pairing-code" type="text" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={512} value={code} onChange={event => setCode(event.target.value)} placeholder="연결 코드 붙여넣기" />
       <button type="button" className="primary-button" disabled={busy || !code.trim()} onClick={() => void connect()}>{busy ? "저장 중…" : "연결하기"}</button>
     </div>}

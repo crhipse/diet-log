@@ -78,7 +78,7 @@ export class ChronicleSyncClient {
 
   async connect(code: string): Promise<void> {
     const trimmed = code.trim();
-    if (!trimmed || trimmed.length > 512) throw new Error("생활연대기에서 복사한 연결 코드를 입력해주세요.");
+    if (!trimmed || trimmed.length > 512) throw new Error("위버멘쉬에서 복사한 연결 코드를 입력해주세요.");
     await this.database.transaction("rw", this.database.chronicleSync, async () => {
       const previous = await this.database.chronicleSync.get("chronicle");
       // A lost exchange response must retry with the same device identity.

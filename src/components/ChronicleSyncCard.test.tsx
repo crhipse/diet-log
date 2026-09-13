@@ -7,8 +7,8 @@ afterEach(() => vi.restoreAllMocks());
 it("uses a one-time source code and clears it after saving without blocking food records", async () => {
   const connect = vi.spyOn(chronicleSync, "connect").mockResolvedValue();
   render(<ChronicleSyncCard />);
-  expect(screen.getByText(/생활연대기 설정 → 자동 연동 관리 → 연결 코드 만들기/)).toBeInTheDocument();
-  const input = screen.getByLabelText("생활연대기 연결 코드");
+  expect(screen.getByText(/위버멘쉬 설정 → 자동 연동 관리 → 연결 코드 만들기/)).toBeInTheDocument();
+  const input = screen.getByLabelText("위버멘쉬 연결 코드");
   fireEvent.change(input, { target: { value: "one-time-code" } });
   fireEvent.click(screen.getByRole("button", { name: "연결하기" }));
   await vi.waitFor(() => expect(connect).toHaveBeenCalledWith("one-time-code"));
