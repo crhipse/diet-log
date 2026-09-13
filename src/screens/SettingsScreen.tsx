@@ -17,6 +17,7 @@ import {
 import { useRef, useState } from "react";
 import { MODEL_PRESETS } from "../constants";
 import type { AppSettings } from "../types";
+import ChronicleSyncCard from "../components/ChronicleSyncCard";
 
 type RestoreMode = "merge" | "replace";
 
@@ -150,6 +151,7 @@ export default function SettingsScreen({
       </header>
 
       <div className="settings-screen__body">
+        <ChronicleSyncCard />
         <section className="settings-card">
           <div className="settings-card__title">
             <span className="settings-card__icon">
@@ -502,7 +504,7 @@ export default function SettingsScreen({
         <section className="privacy-card">
           <ShieldCheck size={21} aria-hidden="true" />
           <div>
-            <h2>내 기록은 이 휴대폰에만</h2>
+            <h2>내 기록 관리</h2>
             <p>
               다른 사람이 같은 주소를 열어도 내 기록은 보이지 않습니다.
               브라우저 데이터 삭제나 휴대폰 교체 전에는 백업을 만들어주세요.

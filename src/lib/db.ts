@@ -16,6 +16,7 @@ import {
 } from "./metabolism";
 import type { GoalSettings } from "./goalHistory";
 import { validateGoalSettings } from "./goalHistory";
+import type { ChronicleSyncState } from "./chronicleSyncTypes";
 
 export const DATABASE_NAME = "diet-log";
 
@@ -26,6 +27,7 @@ export class DietLogDatabase extends Dexie {
   metabolismProfiles!: Table<MetabolismProfile, "metabolism">;
   dailyMetabolismEntries!: Table<DailyMetabolismEntry, string>;
   favoriteFoods!: Table<FavoriteFood, string>;
+  chronicleSync!: Table<ChronicleSyncState, "chronicle">;
 
   constructor(name = DATABASE_NAME) {
     super(name);
@@ -44,6 +46,7 @@ export class DietLogDatabase extends Dexie {
     this.version(3).stores({
       favoriteFoods: "&id, name, updatedAt"
     });
+    this.version(4).stores({ chronicleSync: "&id" });
   }
 }
 
