@@ -169,6 +169,25 @@ describe("기초대사량 계산", () => {
 });
 
 describe("활동대사량 계산", () => {
+  it("기기 총칼로리는 자동 추정을 대체하고 휴식 중 소모분만 차감한다", () => {
+    const base = entry("2026-07-26", { weightKg: 80, exercises: [{ id: "bike", name: "자전거", category: "cycling", intensity: "high",
+      durationMinutes: 30, caloriesKcal: 300 }] });
+    const result = estimateDailyEnergy(profile(), base);
+    expect(result.exerciseKcal).toBe(260);
+    expect(estimateDailyEnergy(profile(), { ...base, exercises: [{ ...base.exercises[0], caloriesKcal: 0 }] }).exerciseKcal).toBe(0);
+    expect(estimateDailyEnergy(profile(), { ...base, exercises: [{ ...base.exercises[0], caloriesKcal: undefined, category: "strength", intensity: "moderate" }] }).exerciseKcal).toBe(160);
+  });
+
+  it("걷기·달리기는 체크한 경우에만 중복 보정하며 실제 걸음 수 소모량 이상 차감하지 않는다", () => {
+    const base = entry("2026-07-26", { weightKg: 80, steps: 3100, exercises: [{ id: "run", name: "러닝머신", category: "running",
+      intensity: "moderate", durationMinutes: 60, caloriesKcal: 600 }] });
+    expect(estimateDailyEnergy(profile(), base).exerciseKcal).toBe(520);
+    const checked = estimateDailyEnergy(profile(), { ...base, exercises: [{ ...base.exercises[0], includedInSteps: true }] });
+    expect(checked.stepsKcal).toBe(4);
+    expect(checked.exerciseKcal).toBe(516);
+    expect(estimateDailyEnergy(profile(), { ...base, steps: undefined, exercises: [{ ...base.exercises[0], includedInSteps: true }] }).exerciseKcal).toBe(520);
+  });
+
   it("간편 모드의 다섯 활동계수를 그대로 사용한다", () => {
     expect(SIMPLE_ACTIVITY_FACTORS).toEqual({
       sedentary: 1.2,
@@ -215,7 +234,7 @@ describe("활동대사량 계산", () => {
     expect(result.tdeeKcal).toBe(2_308);
   });
 
-  it("걸음 수와 달리기가 함께 있으면 중복 보정을 적용한다", () => {
+  it("걸음 수와 달리기를 중복 체크하면 보정을 적용한다", () => {
     const result = estimateDailyEnergy(
       profile(),
       entry("2026-07-26", {
@@ -234,6 +253,7 @@ describe("활동대사량 계산", () => {
             name: "달리기",
             category: "running",
             intensity: "moderate",
+            includedInSteps: true,
             durationMinutes: 60
           }
         ]

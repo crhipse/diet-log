@@ -10,6 +10,8 @@ import RecordEditorScreen, {
   type RecordEditorPayload
 } from "./screens/RecordEditorScreen";
 import SettingsScreen from "./screens/SettingsScreen";
+import StatisticsScreen from "./screens/StatisticsScreen";
+import { dailyEnergyBalances } from "./lib/energyBalance";
 import { analyzeFoodRecord, testApiKey } from "./lib/ai";
 import {
   deleteRecordWithPhotos,
@@ -18,6 +20,8 @@ import {
   getSettings,
   listDailyMetabolismEntries,
   listRecords,
+  listDailyCompletions,
+  setDietCompletion,
   requestPersistentStorage,
   saveGoalSettings,
   saveMetabolismProfileAndEntry,
@@ -63,6 +67,7 @@ import {
 import type {
   AppSettings,
   DailyMetabolismEntry,
+  DailyCompletion,
   FoodAnalysisResult,
   FoodItem,
   FoodRecord,
@@ -75,9 +80,10 @@ type Screen =
   | { name: "home" }
   | { name: "goal" }
   | { name: "metabolism" }
+  | { name: "statistics" }
   | { name: "editor"; recordId?: string }
   | { name: "detail"; recordId: string }
-  | { name: "settings"; from?: "home" | "goal" | "metabolism" };
+  | { name: "settings"; from?: "home" | "goal" | "metabolism" | "statistics" };
 
 interface ToastState {
   id: number;
@@ -100,6 +106,7 @@ const EMPTY_TOTALS = {
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ name: "home" });
   const [records, setRecords] = useState<FoodRecord[]>([]);
+  const [completions, setCompletions] = useState<DailyCompletion[]>([]);
   const [metabolismProfile, setMetabolismProfile] =
     useState<MetabolismProfile | null>(null);
   const [metabolismEntries, setMetabolismEntries] = useState<
@@ -130,16 +137,23 @@ export default function App() {
   );
 
   const reloadRecords = useCallback(async () => {
-    setRecords(await listRecords());
+    const [nextRecords, nextCompletions, entries] = await Promise.all([
+      listRecords(), listDailyCompletions(), listDailyMetabolismEntries()
+    ]);
+    setRecords(nextRecords);
+    setCompletions(nextCompletions);
+    setMetabolismEntries(entries);
   }, []);
 
   const reloadMetabolism = useCallback(async () => {
-    const [profile, entries] = await Promise.all([
+    const [profile, entries, nextCompletions] = await Promise.all([
       getMetabolismProfile(),
-      listDailyMetabolismEntries()
+      listDailyMetabolismEntries(),
+      listDailyCompletions()
     ]);
     setMetabolismProfile(profile ?? null);
     setMetabolismEntries(entries);
+    setCompletions(nextCompletions);
   }, []);
 
   useEffect(() => {
@@ -151,19 +165,22 @@ export default function App() {
           loadedSettings,
           persisted,
           loadedProfile,
-          loadedMetabolismEntries
+          loadedMetabolismEntries,
+          loadedCompletions
         ] = await Promise.all([
           listRecords(),
           getSettings(),
           requestPersistentStorage(),
           getMetabolismProfile(),
-          listDailyMetabolismEntries()
+          listDailyMetabolismEntries(),
+          listDailyCompletions()
         ]);
         if (!active) return;
         setRecords(loadedRecords);
         setSettingsState(loadedSettings);
         setMetabolismProfile(loadedProfile ?? null);
         setMetabolismEntries(loadedMetabolismEntries);
+        setCompletions(loadedCompletions);
         const loadedToday = getTodayDayKey(loadedSettings.dayStartHour);
         setTodayDay(loadedToday);
         setSelectedDay(loadedToday);
@@ -227,8 +244,13 @@ export default function App() {
   const learningEntries = useMemo(() => {
     if (!settings) return [];
     const today = getTodayDayKey(settings.dayStartHour);
-    return metabolismEntries.filter((entry) => entry.date <= today);
-  }, [metabolismEntries, settings]);
+    const completedDates = new Set(completions.filter((item) => item.dietComplete).map((item) => item.id));
+    return metabolismEntries.filter((entry) => entry.date <= today && entry.metabolismComplete && entry.weightKg > 0)
+      .map((entry) => ({ ...entry, dietComplete: completedDates.has(entry.date) }));
+  }, [metabolismEntries, settings, completions]);
+
+  const energyPoints = useMemo(() => settings ? dailyEnergyBalances(records, metabolismEntries,
+    completions, settings.dayStartHour, todayDay) : [], [records, metabolismEntries, completions, settings, todayDay]);
 
   const intakeByDate = useMemo(() => {
     if (!settings) return {};
@@ -697,6 +719,7 @@ export default function App() {
       const saved = await saveSettings(next);
       const nextToday = getTodayDayKey(saved.dayStartHour);
       setSettingsState(saved);
+      await reloadMetabolism();
       setTodayDay(nextToday);
       setSelectedDay((current) =>
         current === previousToday || current > nextToday
@@ -735,13 +758,23 @@ export default function App() {
       await saveMetabolismProfileAndEntry(profile, entry);
       await reloadMetabolism();
       notify(
-        `${formatDayLabel(entry.date)} 기본 정보와 대사량 기록을 저장했어요.`
+        `${formatDayLabel(entry.date)} 대사량 기록을 ${entry.metabolismComplete ? "완료" : "중간저장"}했어요.`
       );
     } catch (error) {
       notify(errorMessage(error, "오늘의 대사량 기록을 저장하지 못했습니다."), "error");
     } finally {
       setBusy(false);
     }
+  };
+
+  const completeDiet = async (complete: boolean) => {
+    setBusy(true);
+    try {
+      await setDietCompletion(selectedDay, complete);
+      await reloadMetabolism();
+      notify(complete ? "식단 기록을 완료했어요." : "식단 완료 표시를 취소했어요.");
+    } catch (error) { notify(errorMessage(error, "완료 상태를 저장하지 못했습니다."), "error"); }
+    finally { setBusy(false); }
   };
 
   const exportFullBackup = async (includePhotos: boolean) => {
@@ -882,6 +915,9 @@ export default function App() {
           onOpenSettings={() => setScreen({ name: "settings", from: "home" })}
           onAddRecord={() => void openEditor()}
           onOpenRecord={(recordId) => setScreen({ name: "detail", recordId })}
+          dietComplete={completions.some((item) => item.id === selectedDay && item.dietComplete)}
+          isBusy={busy}
+          onCompleteDiet={(complete) => void completeDiet(complete)}
         />
       )}
 
@@ -931,6 +967,11 @@ export default function App() {
           onSaveDay={updateMetabolismDay}
         />
       )}
+
+      {screen.name === "statistics" && <StatisticsScreen points={energyPoints} todayDay={todayDay}
+        selectedDay={selectedDay} onOpenDay={(date, section) => {
+          setSelectedDay(date); setScreen(section === "diet" ? { name: "home" } : { name: "metabolism" });
+        }} onOpenSettings={() => setScreen({ name: "settings", from: "statistics" })} />}
 
       {screen.name === "editor" && (
         <RecordEditorScreen
@@ -996,7 +1037,9 @@ export default function App() {
           isBusy={busy}
           onBack={() =>
             setScreen(
-              screen.from === "metabolism"
+              screen.from === "statistics"
+                ? { name: "statistics" }
+                : screen.from === "metabolism"
                 ? { name: "metabolism" }
                 : screen.from === "goal"
                   ? { name: "goal" }
@@ -1017,11 +1060,12 @@ export default function App() {
       )}
 
       {(screen.name === "home" ||
+        screen.name === "statistics" ||
         screen.name === "goal" ||
         screen.name === "metabolism") && (
         <AppNavigation
           active={
-            screen.name === "home"
+            screen.name === "statistics" ? "statistics" : screen.name === "home"
               ? "diet"
               : screen.name === "goal"
                 ? "goal"
@@ -1034,7 +1078,7 @@ export default function App() {
               metabolismDirty &&
               !window.confirm(
                 `저장하지 않은 대사량 입력이 있습니다. 변경사항을 버리고 ${
-                  section === "diet" ? "식단" : "목표"
+                  section === "diet" ? "식단" : section === "statistics" ? "통계" : "목표"
                 } 화면으로 이동할까요?`
               )
             ) {
@@ -1053,7 +1097,7 @@ export default function App() {
               setSelectedDay(getTodayDayKey(settings.dayStartHour));
             }
             setScreen(
-              section === "diet"
+              section === "statistics" ? { name: "statistics" } : section === "diet"
                 ? { name: "home" }
                 : section === "goal"
                   ? { name: "goal" }

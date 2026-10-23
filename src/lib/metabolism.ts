@@ -2,6 +2,7 @@ import type {
   BmrCalculation,
   Confidence,
   DailyEnergyEstimate,
+  DailyExercise,
   DailyMetabolismEntry,
   ExerciseCategory,
   ExerciseIntensity,
@@ -279,7 +280,22 @@ export function validateDailyMetabolismEntry(
   if (entry.id !== entry.date) {
     throw new Error("일일 대사량 기록 ID는 기록 날짜와 같아야 합니다.");
   }
-  assertFiniteInRange(entry.weightKg, 30, 350, "체중(kg)");
+  if (!(entry.metabolismComplete === false && entry.weightKg === 0)) {
+    assertFiniteInRange(entry.weightKg, 30, 350, "체중(kg)");
+  }
+  if (entry.metabolismComplete !== undefined && typeof entry.metabolismComplete !== "boolean") {
+    throw new Error("대사량 완료 여부가 올바르지 않습니다.");
+  }
+  if (entry.tdeeSnapshot !== undefined) {
+    assertFiniteInRange(entry.tdeeSnapshot.kcal, 1, 100_000, "저장된 TDEE");
+    assertIsoTimestamp(entry.tdeeSnapshot.calculatedAt, "TDEE 저장 시각");
+    if (!["detail", "simple", "learning"].includes(entry.tdeeSnapshot.source)) {
+      throw new Error("TDEE 계산 방식이 올바르지 않습니다.");
+    }
+    if (entry.tdeeSnapshot.simpleLevel !== undefined && !(entry.tdeeSnapshot.simpleLevel in SIMPLE_ACTIVITY_FACTORS)) {
+      throw new Error("저장된 활동 수준이 올바르지 않습니다.");
+    }
+  }
   if (entry.bodyFatPercent !== undefined) {
     assertFiniteInRange(entry.bodyFatPercent, 1, 75, "체지방률(%)");
   }
@@ -318,6 +334,12 @@ export function validateDailyMetabolismEntry(
 
   let totalExerciseMinutes = 0;
   for (const exercise of entry.exercises) {
+    if (exercise.caloriesKcal !== undefined) {
+      assertFiniteInRange(exercise.caloriesKcal, 0, 20_000, "운동 소모 칼로리");
+    }
+    if (exercise.includedInSteps !== undefined && typeof exercise.includedInSteps !== "boolean") {
+      throw new Error("운동 걸음 수 중복 여부가 올바르지 않습니다.");
+    }
     assertNonEmpty(exercise.id, "운동 기록 ID");
     assertNonEmpty(exercise.name, "운동 이름");
     if (!EXERCISE_CATEGORY_VALUES.has(exercise.category)) {
@@ -399,6 +421,15 @@ export function calculateSimpleTdee(
   };
 }
 
+/** Net exercise energy: resting expenditure is already included in BMR. */
+export function exerciseNetEnergy(exercise: DailyExercise, weightKg: number): number {
+  const hours = exercise.durationMinutes / 60;
+  if (exercise.caloriesKcal !== undefined) {
+    return Math.max(0, exercise.caloriesKcal - weightKg * hours);
+  }
+  return Math.max(0, EXERCISE_METS[exercise.category][exercise.intensity] - 1) * weightKg * hours;
+}
+
 export function estimateDailyEnergy(
   profile: MetabolismProfile,
   entry: DailyMetabolismEntry
@@ -428,17 +459,14 @@ export function estimateDailyEnergy(
       entry.weightKg * workFactors[activity.activityType] * activity.hours,
     0
   );
-  const exerciseKcal = entry.exercises.reduce((total, exercise) => {
-    const met = EXERCISE_METS[exercise.category][exercise.intensity];
-    const stepsMayIncludeExercise =
-      hasSteps &&
-      (exercise.category === "walking" || exercise.category === "running");
-    const netMet = Math.max(0, met - (stepsMayIncludeExercise ? 3 : 1));
-    return (
-      total +
-      netMet * entry.weightKg * (exercise.durationMinutes / 60)
-    );
-  }, 0);
+  const exerciseRawKcal = entry.exercises.reduce((total, exercise) =>
+    total + exerciseNetEnergy(exercise, entry.weightKg), 0);
+  const overlapKcal = entry.exercises.reduce((total, exercise) =>
+    total + (hasSteps && exercise.includedInSteps &&
+      (exercise.category === "walking" || exercise.category === "running")
+      ? Math.min(exerciseNetEnergy(exercise, entry.weightKg),
+          2 * entry.weightKg * exercise.durationMinutes / 60) : 0), 0);
+  const exerciseKcal = Math.max(0, exerciseRawKcal - Math.min(stepsKcal, overlapKcal));
 
   const tdeeKcal = roundKcal(
     bmr.kcal +
@@ -464,12 +492,15 @@ export function estimateDailyEnergy(
     hasSteps &&
     entry.exercises.some(
       (exercise) =>
-        exercise.category === "walking" || exercise.category === "running"
+        exercise.includedInSteps && (exercise.category === "walking" || exercise.category === "running")
     )
   ) {
     assumptions.push(
-      "걷기·달리기 운동의 걸음이 총 걸음 수에 포함될 수 있어 중복분을 보정했습니다."
+      "중복 체크한 걷기·달리기만 실제 추가 걸음 수 소모량 범위 내에서 보정했습니다."
     );
+  }
+  if (entry.exercises.some((exercise) => exercise.caloriesKcal !== undefined)) {
+    assumptions.push("운동기기의 총칼로리에서 휴식 중 소모분을 빼고 운동 소모량으로 반영했습니다.");
   }
 
   return {

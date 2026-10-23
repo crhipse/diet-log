@@ -1,7 +1,6 @@
 import {
   Activity,
   BriefcaseBusiness,
-  CalendarCheck,
   CalendarDays,
   ChevronDown,
   ChevronLeft,
@@ -245,7 +244,7 @@ export default function MetabolismScreen({
   onSaveProfile,
   onSaveDay
 }: MetabolismScreenProps) {
-  const [mode, setMode] = useState<MetabolismMode>("detail");
+  const [mode, setMode] = useState<MetabolismMode>(entry?.tdeeSnapshot?.source ?? "detail");
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [profileDirty, setProfileDirty] = useState(false);
   const [entryDirty, setEntryDirty] = useState(false);
@@ -254,7 +253,7 @@ export default function MetabolismScreen({
   );
   const [heightDraft, setHeightDraft] = useState<number | undefined>();
   const [simpleLevel, setSimpleLevel] =
-    useState<SimpleActivityLevel>("moderate");
+    useState<SimpleActivityLevel>(entry?.tdeeSnapshot?.simpleLevel ?? "moderate");
   const [sexConfirmed, setSexConfirmed] = useState(Boolean(profile));
   const [profileDraft, setProfileDraft] = useState<MetabolismProfile>(() =>
     profile ?? emptyProfile()
@@ -273,6 +272,8 @@ export default function MetabolismScreen({
 
   useEffect(() => {
     setEntryDraft(entry ?? emptyEntry(selectedDay));
+    setMode(entry?.tdeeSnapshot?.source ?? "detail");
+    setSimpleLevel(entry?.tdeeSnapshot?.simpleLevel ?? "moderate");
     setEntryDirty(false);
   }, [entry, selectedDay]);
 
@@ -295,11 +296,13 @@ export default function MetabolismScreen({
 
   const changeProfileDraft = (next: MetabolismProfile) => {
     setProfileDraft(next);
+    setEntryDraft((current) => ({ ...current, metabolismComplete: false, tdeeSnapshot: undefined }));
+    setEntryDirty(true);
     setProfileDirty(true);
   };
 
   const changeEntryDraft = (next: DailyMetabolismEntry) => {
-    setEntryDraft(next);
+    setEntryDraft({ ...next, metabolismComplete: false, tdeeSnapshot: undefined });
     setEntryDirty(true);
   };
 
@@ -380,6 +383,10 @@ export default function MetabolismScreen({
   }, [history, intakeByDate]);
 
   const summaryEstimate = useMemo(() => {
+    if (!entryDirty && !profileDirty && entryDraft.metabolismComplete && entryDraft.tdeeSnapshot?.source === mode) {
+      const kcal = entryDraft.tdeeSnapshot.kcal;
+      return { bmrKcal: bmr?.kcal, activityKcal: bmr ? kcal - bmr.kcal : undefined, tdeeKcal: kcal };
+    }
     if (mode === "simple") return simpleEstimate;
     if (
       mode === "learning" &&
@@ -393,7 +400,7 @@ export default function MetabolismScreen({
       };
     }
     return dailyEstimate;
-  }, [bmr, dailyEstimate, learning, mode, simpleEstimate]);
+  }, [bmr, dailyEstimate, learning, mode, simpleEstimate, entryDirty, profileDirty, entryDraft.metabolismComplete, entryDraft.tdeeSnapshot]);
 
   const saveProfileDraft = async (
     nextDraft: MetabolismProfile = profileDraft
@@ -428,12 +435,14 @@ export default function MetabolismScreen({
     });
     if (!saved) return;
 
+    setEntryDraft((current) => ({ ...current, metabolismComplete: false, tdeeSnapshot: undefined }));
+    setEntryDirty(true);
     setHeightDraft(undefined);
     setHeightEditorOpen(false);
   };
 
-  const saveEntryDraft = async () => {
-    if (!sexConfirmed || !bmr) return;
+  const saveEntryDraft = async (complete = false) => {
+    if (!sexConfirmed || (complete && (!bmr || !dailyEstimate || !summaryEstimate))) return;
     const now = new Date().toISOString();
     await onSaveDay(
       {
@@ -443,6 +452,13 @@ export default function MetabolismScreen({
       },
       {
         ...entryDraft,
+        metabolismComplete: complete,
+        tdeeSnapshot: complete && summaryEstimate ? {
+          kcal: summaryEstimate.tdeeKcal,
+          calculatedAt: now,
+          source: mode === "learning" && learning?.status !== "estimated" ? "detail" : mode,
+          simpleLevel: mode === "simple" ? simpleLevel : undefined
+        } : undefined,
         id: selectedDay,
         date: selectedDay,
         createdAt: entryDraft.createdAt || now,
@@ -524,8 +540,7 @@ export default function MetabolismScreen({
           onChange={changeProfileDraft}
           onConfirmSex={(sex) => {
             setSexConfirmed(true);
-            setProfileDraft((current) => ({ ...current, sex }));
-            setProfileDirty(true);
+            changeProfileDraft({ ...profileDraft, sex });
           }}
           onBeginHeightEdit={() => {
             setHeightDraft(undefined);
@@ -566,7 +581,8 @@ export default function MetabolismScreen({
             level={simpleLevel}
             estimate={simpleEstimate}
             hasBmr={Boolean(bmr)}
-            onChange={setSimpleLevel}
+            onChange={(level) => { setSimpleLevel(level); setEntryDirty(true);
+              setEntryDraft((current) => ({ ...current, metabolismComplete: false, tdeeSnapshot: undefined })); }}
             onOpenDetail={() => setMode("detail")}
           />
         )}
@@ -594,6 +610,13 @@ export default function MetabolismScreen({
             onSaveEntry={() => void saveEntryDraft()}
           />
         )}
+        <div className="metabolism-save-actions">
+          {entryDraft.metabolismComplete && !entryDirty && !profileDirty && <p className="completion-status">대사량 기록 완료됨 · TDEE {entryDraft.tdeeSnapshot?.kcal.toLocaleString("ko-KR")} kcal</p>}
+          {mode === "simple" && <button className="secondary-button" type="button" disabled={isBusy}
+            onClick={() => void saveEntryDraft()}>대사량 중간저장</button>}
+          <button className="primary-button" type="button" disabled={isBusy || !dailyEstimate || !summaryEstimate}
+            onClick={() => void saveEntryDraft(true)}>대사량 기록 완료</button>
+        </div>
       </div>
 
       {calendarOpen && (
@@ -1031,31 +1054,14 @@ function DetailPanel({
 
       <EstimateExplanation estimate={estimate} entry={entry} />
 
-      <label className="completion-toggle">
-        <input
-          type="checkbox"
-          checked={entry.dietComplete}
-          onChange={(event) =>
-            onEntryChange({ ...entry, dietComplete: event.target.checked })
-          }
-        />
-        <span>
-          <CalendarCheck size={20} aria-hidden="true" />
-          <span>
-            <strong>오늘 식단 기록 완료</strong>
-            <small>하루 섭취량이 모두 기록됐다면 켜 주세요. 개인화 학습에 사용해요.</small>
-          </span>
-        </span>
-      </label>
-
       <button
         className="primary-button primary-button--full"
         type="button"
-        disabled={isBusy || !estimate}
+        disabled={isBusy}
         onClick={onSaveEntry}
       >
         <Save size={18} aria-hidden="true" />
-        오늘 대사량 기록 저장
+        대사량 중간저장
       </button>
     </section>
   );
@@ -1375,7 +1381,8 @@ function ExerciseToday({
                         item.id === exercise.id
                           ? {
                               ...item,
-                              category: event.target.value as ExerciseCategory
+                              category: event.target.value as ExerciseCategory,
+                              includedInSteps: false
                             }
                           : item
                       )
@@ -1394,6 +1401,7 @@ function ExerciseToday({
                 <select
                   value={exercise.intensity}
                   aria-label={`${exercise.name} 운동 강도`}
+                  disabled={exercise.caloriesKcal !== undefined}
                   onChange={(event) =>
                     onChange(
                       exercises.map((item) =>
@@ -1431,6 +1439,32 @@ function ExerciseToday({
                   )
                 }
               />
+            </div>
+            <div className="exercise-calories">
+              <label className="field">
+                <span>소모 칼로리 입력 방식</span>
+                <select aria-label={`${exercise.name} 칼로리 입력 방식`}
+                  value={exercise.caloriesKcal === undefined ? "auto" : "manual"}
+                  onChange={(event) => onChange(exercises.map((item) => item.id === exercise.id ? {
+                    ...item, caloriesKcal: event.target.value === "manual" ? 0 : undefined
+                  } : item))}>
+                  <option value="auto">종류·강도로 자동 추정</option>
+                  <option value="manual">운동기기 칼로리 직접 입력</option>
+                </select>
+              </label>
+              {exercise.caloriesKcal !== undefined && <>
+                <NumberField label="기기 표시 총칼로리" unit="kcal" value={exercise.caloriesKcal}
+                  min={0} max={20000} step={1} onChange={(caloriesKcal) => onChange(exercises.map((item) =>
+                    item.id === exercise.id ? { ...item, caloriesKcal } : item))} />
+                <p className="field-help">러닝머신·실내자전거에 표시된 값을 입력하세요. 휴식 중 소모분을 제외해 TDEE에 반영해요.</p>
+              </>}
+              {(exercise.category === "walking" || exercise.category === "running") &&
+                <label className="check-row">
+                  <input type="checkbox" checked={exercise.includedInSteps ?? false}
+                    onChange={(event) => onChange(exercises.map((item) => item.id === exercise.id
+                      ? { ...item, includedInSteps: event.target.checked } : item))} />
+                  <span>이 운동의 걸음이 오늘 걸음 수에도 포함됨</span>
+                </label>}
             </div>
           </div>
         ))}
@@ -1944,22 +1978,6 @@ function LearningPanel({
             }
           />
         </div>
-        <label className="completion-toggle completion-toggle--compact">
-          <input
-            type="checkbox"
-            checked={entry.dietComplete}
-            onChange={(event) =>
-              onEntryChange({ ...entry, dietComplete: event.target.checked })
-            }
-          />
-          <span>
-            <CalendarCheck size={19} aria-hidden="true" />
-            <span>
-              <strong>오늘 식단 기록 완료</strong>
-              <small>빠뜨린 음식이 없을 때 체크해 주세요.</small>
-            </span>
-          </span>
-        </label>
         <button
           className="secondary-button metabolism-save-button"
           type="button"
@@ -1967,7 +1985,7 @@ function LearningPanel({
           onClick={onSaveEntry}
         >
           <Save size={17} aria-hidden="true" />
-          오늘 학습 자료 저장
+          대사량 중간저장
         </button>
         {!canSave && (
           <small className="learning-save-hint">
@@ -2119,6 +2137,7 @@ function emptyEntry(day: string): DailyMetabolismEntry {
     date: day,
     weightKg: 0,
     dietComplete: false,
+    metabolismComplete: false,
     jobActivities: [],
     exercises: [],
     createdAt: now,

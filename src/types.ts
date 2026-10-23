@@ -100,6 +100,13 @@ export interface DietLogBackup {
   metabolismEntries: DailyMetabolismEntry[];
   /** Absent in older backups; importing those preserves existing favorites. */
   favoriteFoods?: FavoriteFood[];
+  dailyCompletions?: DailyCompletion[];
+}
+
+export interface DailyCompletion {
+  id: string;
+  dietComplete: boolean;
+  updatedAt: string;
 }
 
 export interface DailyTotals extends Nutrients {
@@ -200,6 +207,9 @@ export interface DailyExercise {
   category: ExerciseCategory;
   intensity: ExerciseIntensity;
   durationMinutes: number;
+  /** Machine-reported total kcal; absent means MET estimation. */
+  caloriesKcal?: number;
+  includedInSteps?: boolean;
 }
 
 export interface DailyMetabolismEntry {
@@ -210,6 +220,8 @@ export interface DailyMetabolismEntry {
   bodyFatPercent?: number;
   steps?: number;
   dietComplete: boolean;
+  metabolismComplete?: boolean;
+  tdeeSnapshot?: { kcal: number; calculatedAt: string; source: "detail" | "simple" | "learning"; simpleLevel?: SimpleActivityLevel };
   jobActivities: DailyWorkActivity[];
   exercises: DailyExercise[];
   createdAt: string;

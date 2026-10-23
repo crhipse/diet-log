@@ -33,6 +33,9 @@ interface HomeScreenProps {
   onOpenSettings: () => void;
   onAddRecord: () => void;
   onOpenRecord: (id: string) => void;
+  dietComplete?: boolean;
+  isBusy?: boolean;
+  onCompleteDiet?: (complete: boolean) => void;
 }
 
 export default function HomeScreen({
@@ -50,7 +53,10 @@ export default function HomeScreen({
   onSelectDate,
   onOpenSettings,
   onAddRecord,
-  onOpenRecord
+  onOpenRecord,
+  dietComplete = false,
+  isBusy = false,
+  onCompleteDiet
 }: HomeScreenProps) {
   const [calendarOpen, setCalendarOpen] = useState(false);
 
@@ -114,6 +120,13 @@ export default function HomeScreen({
         </div>
         <p>{formatMacroLine(totals)}</p>
       </section>
+
+      {onCompleteDiet && records.length > 0 && <div className="diet-completion">
+        <button type="button" className={dietComplete ? "secondary-button" : "primary-button"}
+          disabled={isBusy} onClick={() => onCompleteDiet(!dietComplete)}>
+          {dietComplete ? "식단 완료됨 · 완료 취소" : "식단 기록 완료"}
+        </button>
+      </div>}
 
       <section className="timeline" aria-labelledby="timeline-title">
         <div className="section-heading">

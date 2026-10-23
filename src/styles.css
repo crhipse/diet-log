@@ -480,7 +480,7 @@ p {
   left: 50%;
   display: grid;
   width: min(100%, 480px);
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 9px 16px calc(9px + env(safe-area-inset-bottom));
   border-top: 1px solid rgba(225, 223, 215, 0.92);
@@ -1582,3 +1582,5 @@ p {
     transition-duration: 0.01ms !important;
   }
 }
+.diet-completion { padding: 0 16px 18px; }
+.diet-completion > button { width: 100%; }

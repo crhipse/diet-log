@@ -272,7 +272,7 @@ describe("백업 병합", () => {
       metabolismProfileFixture
     );
     expect(await db.dailyMetabolismEntries.get("2026-07-26")).toEqual(
-      metabolismEntryFixture
+      { ...metabolismEntryFixture, dietComplete: false }
     );
   });
 

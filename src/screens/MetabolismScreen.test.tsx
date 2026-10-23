@@ -27,6 +27,38 @@ const entry: DailyMetabolismEntry = {
   updatedAt: "2026-07-26T00:00:00.000Z"
 };
 
+test("중간저장과 완료는 별개이며 운동기기 입력값과 걸음 수 중복 선택을 저장한다", async () => {
+  const save = vi.fn().mockResolvedValue(undefined);
+  render(<MetabolismScreen selectedDay={entry.date} todayDay={entry.date} dateLabel="7월 26일" isToday
+    dietRecordDays={[]} metabolismRecordDays={[]} profile={profile} entry={entry} history={[]} intakeByDate={{}}
+    onPreviousDate={vi.fn()} onNextDate={vi.fn()} onSelectDate={vi.fn()} onOpenSettings={vi.fn()}
+    onSaveProfile={vi.fn()} onSaveDay={save} />);
+  fireEvent.click(screen.getByRole("button", { name: "빠르게 걷기" }));
+  fireEvent.change(screen.getByRole("combobox", { name: "빠르게 걷기 칼로리 입력 방식" }), { target: { value: "manual" } });
+  fireEvent.change(screen.getByLabelText("기기 표시 총칼로리 (kcal)"), { target: { value: "300" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: "이 운동의 걸음이 오늘 걸음 수에도 포함됨" }));
+  fireEvent.click(screen.getByRole("button", { name: "대사량 중간저장" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][1]).toMatchObject({ metabolismComplete: false, tdeeSnapshot: undefined,
+    exercises: [expect.objectContaining({ caloriesKcal: 300, includedInSteps: true })] });
+  fireEvent.click(screen.getByRole("button", { name: "대사량 기록 완료" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(save.mock.calls[1][1]).toMatchObject({ metabolismComplete: true,
+    tdeeSnapshot: { kcal: expect.any(Number), source: "detail" } });
+});
+
+test("체중 입력 전에도 중간저장은 가능하고 완료는 할 수 없다", async () => {
+  const save = vi.fn().mockResolvedValue(undefined);
+  render(<MetabolismScreen selectedDay={entry.date} todayDay={entry.date} dateLabel="7월 26일" isToday
+    dietRecordDays={[]} metabolismRecordDays={[]} profile={profile} entry={null} history={[]} intakeByDate={{}}
+    onPreviousDate={vi.fn()} onNextDate={vi.fn()} onSelectDate={vi.fn()} onOpenSettings={vi.fn()}
+    onSaveProfile={vi.fn()} onSaveDay={save} />);
+  expect(screen.getByRole("button", { name: "대사량 기록 완료" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "대사량 중간저장" }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][1]).toMatchObject({ weightKg: 0, metabolismComplete: false });
+});
+
 test("일반 예시는 오늘 기록에만 추가하고 저장 템플릿은 변경하지 않는다", async () => {
   const onSaveDay = vi.fn().mockResolvedValue(undefined);
 
@@ -54,7 +86,7 @@ test("일반 예시는 오늘 기록에만 추가하고 저장 템플릿은 변�
   fireEvent.click(screen.getByRole("button", { name: "사무·재택" }));
   fireEvent.click(screen.getByRole("button", { name: "빠르게 걷기" }));
   fireEvent.click(
-    screen.getByRole("button", { name: "오늘 대사량 기록 저장" })
+    screen.getByRole("button", { name: "대사량 중간저장" })
   );
 
   await waitFor(() => expect(onSaveDay).toHaveBeenCalledTimes(1));

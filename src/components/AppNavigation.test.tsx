@@ -11,7 +11,8 @@ test("식단, 목표, 대사량 탭을 순서대로 표시하고 선택한 탭�
   expect(tabs.map((tab) => tab.textContent)).toEqual([
     "식단",
     "목표",
-    "대사량"
+    "대사량",
+    "통계"
   ]);
   expect(screen.getByRole("button", { name: "목표" })).toHaveAttribute(
     "aria-current",

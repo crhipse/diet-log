@@ -1,6 +1,6 @@
-import { Flame, Target, Utensils } from "lucide-react";
+import { ChartNoAxesCombined, Flame, Target, Utensils } from "lucide-react";
 
-export type PrimarySection = "diet" | "goal" | "metabolism";
+export type PrimarySection = "diet" | "goal" | "metabolism" | "statistics";
 
 interface AppNavigationProps {
   active: PrimarySection;
@@ -39,6 +39,10 @@ export default function AppNavigation({
       >
         <Flame size={19} aria-hidden="true" />
         <span>대사량</span>
+      </button>
+      <button className={active === "statistics" ? "is-active" : ""} type="button"
+        aria-current={active === "statistics" ? "page" : undefined} onClick={() => onChange("statistics")}>
+        <ChartNoAxesCombined size={19} aria-hidden="true" /><span>통계</span>
       </button>
     </nav>
   );

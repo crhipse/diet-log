@@ -1002,3 +1002,6 @@
     transition: none;
   }
 }
+.metabolism-save-actions { display: grid; gap: 10px; padding: 2px 0 16px; }
+.metabolism-save-actions .completion-status { color: #376d56; font-size: 13px; padding: 10px 0; }
+.exercise-calories { display: grid; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }

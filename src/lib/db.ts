@@ -3,6 +3,7 @@ import Dexie, { type Table } from "dexie";
 import { DEFAULT_SETTINGS } from "../constants";
 import type {
   AppSettings,
+  DailyCompletion,
   DailyMetabolismEntry,
   FavoriteFood,
   FoodRecord,
@@ -16,6 +17,8 @@ import {
 } from "./metabolism";
 import type { GoalSettings } from "./goalHistory";
 import { validateGoalSettings } from "./goalHistory";
+import { getRecordDayKey } from "./date";
+import { completeIntake, legacyEnergyData } from "./energyBalance";
 
 export const DATABASE_NAME = "diet-log";
 
@@ -26,6 +29,7 @@ export class DietLogDatabase extends Dexie {
   metabolismProfiles!: Table<MetabolismProfile, "metabolism">;
   dailyMetabolismEntries!: Table<DailyMetabolismEntry, string>;
   favoriteFoods!: Table<FavoriteFood, string>;
+  dailyCompletions!: Table<DailyCompletion, string>;
 
   constructor(name = DATABASE_NAME) {
     super(name);
@@ -43,6 +47,15 @@ export class DietLogDatabase extends Dexie {
     });
     this.version(3).stores({
       favoriteFoods: "&id, name, updatedAt"
+    });
+    this.version(4).stores({ dailyCompletions: "&id, updatedAt" }).upgrade(async (tx) => {
+      const [records, entries, profile, settings] = await Promise.all([
+        tx.table("records").toArray(), tx.table("dailyMetabolismEntries").toArray(),
+        tx.table("metabolismProfiles").get("metabolism"), tx.table("settings").get("app")
+      ]);
+      const migrated = legacyEnergyData(records, entries, profile, settings?.dayStartHour ?? 2);
+      await tx.table("dailyCompletions").bulkPut(migrated.dailyCompletions);
+      await tx.table("dailyMetabolismEntries").bulkPut(migrated.metabolismEntries);
     });
   }
 }
@@ -93,7 +106,12 @@ export async function saveRecord(
     }
   }
 
-  await db.transaction("rw", db.records, db.photos, async () => {
+  await db.transaction("rw", [db.records, db.photos, db.settings, db.dailyCompletions, db.dailyMetabolismEntries], async () => {
+    const old = await db.records.get(record.id);
+    const settings = await db.settings.get("app");
+    const hour = settings?.dayStartHour ?? 2;
+    const days = new Set([getRecordDayKey(record, hour), ...(old ? [getRecordDayKey(old, hour)] : [])]);
+    for (const day of days) await invalidateDietCompletion(day);
     await db.records.put(record);
     if (photoAssets.length > 0) {
       await db.photos.bulkPut([...photoAssets]);
@@ -171,9 +189,35 @@ export async function getPhotosForRecord(
 }
 
 export async function deleteRecordWithPhotos(recordId: string): Promise<void> {
-  await db.transaction("rw", db.records, db.photos, async () => {
+  await db.transaction("rw", [db.records, db.photos, db.settings, db.dailyCompletions, db.dailyMetabolismEntries], async () => {
+    const record = await db.records.get(recordId);
+    const settings = await db.settings.get("app");
+    if (record) await invalidateDietCompletion(getRecordDayKey(record, settings?.dayStartHour ?? 2));
     await db.photos.where("recordId").equals(recordId).delete();
     await db.records.delete(recordId);
+  });
+}
+
+async function invalidateDietCompletion(day: string): Promise<void> {
+  await db.dailyCompletions.put({ id: day, dietComplete: false, updatedAt: new Date().toISOString() });
+  const entry = await db.dailyMetabolismEntries.get(day);
+  if (entry?.dietComplete) await db.dailyMetabolismEntries.update(day, { dietComplete: false });
+}
+
+export function listDailyCompletions(): Promise<DailyCompletion[]> {
+  return db.dailyCompletions.toArray();
+}
+
+export async function setDietCompletion(day: string, complete: boolean): Promise<void> {
+  validateDateKey(day);
+  await db.transaction("rw", [db.records, db.settings, db.dailyCompletions, db.dailyMetabolismEntries], async () => {
+    if (complete) {
+      const settings = await db.settings.get("app");
+      const records = (await db.records.toArray()).filter((record) => getRecordDayKey(record, settings?.dayStartHour ?? 2) === day);
+      if (completeIntake(records) === null) throw new Error("모든 음식의 칼로리 입력과 분석을 끝낸 뒤 완료해주세요.");
+    }
+    await db.dailyCompletions.put({ id: day, dietComplete: complete, updatedAt: new Date().toISOString() });
+    await db.dailyMetabolismEntries.update(day, { dietComplete: complete });
   });
 }
 
@@ -231,7 +275,13 @@ export async function saveSettings(
     goalSettings: current.goalSettings,
     updatedAt: new Date().toISOString()
   };
-  await db.settings.put(next);
+  await db.transaction("rw", [db.settings, db.dailyCompletions, db.dailyMetabolismEntries], async () => {
+    await db.settings.put(next);
+    if (dayStartHour !== current.dayStartHour) {
+      await db.dailyCompletions.clear();
+      await db.dailyMetabolismEntries.toCollection().modify({ dietComplete: false });
+    }
+  });
   return next;
 }
 
@@ -297,9 +347,11 @@ export async function saveMetabolismProfileAndEntry(
     "rw",
     db.metabolismProfiles,
     db.dailyMetabolismEntries,
+    db.dailyCompletions,
     async () => {
       await db.metabolismProfiles.put(profile);
-      await db.dailyMetabolismEntries.put(entry);
+      const completion = await db.dailyCompletions.get(entry.date);
+      await db.dailyMetabolismEntries.put({ ...entry, dietComplete: completion?.dietComplete ?? entry.dietComplete });
     }
   );
 }

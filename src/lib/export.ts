@@ -5,6 +5,7 @@ import type {
   BackupPhoto,
   Confidence,
   DailyExercise,
+  DailyCompletion,
   DailyMetabolismEntry,
   DailyWorkActivity,
   DietLogBackup,
@@ -19,6 +20,7 @@ import type {
   Nutrients,
   PhotoAsset,
   Sex,
+  SimpleActivityLevel,
   WorkActivityType,
   WorkTemplate
 } from "../types";
@@ -27,6 +29,7 @@ import {
   getMetabolismProfile,
   getSettings,
   listDailyMetabolismEntries,
+  listDailyCompletions,
   listRecords
 } from "./db";
 import {
@@ -39,6 +42,7 @@ import {
 } from "./date";
 import { sumFoods, sumRecords } from "./nutrition";
 import { listFavoriteFoods, validateFavoriteFood } from "./favorites";
+import { legacyEnergyData } from "./energyBalance";
 import {
   validateDailyMetabolismEntry,
   validateDateKey,
@@ -658,6 +662,8 @@ function dailyExerciseAt(value: unknown, path: string): DailyExercise {
     name: stringAt(item.name, `${path}.name`, { maxLength: 100 }),
     category,
     intensity,
+    caloriesKcal: item.caloriesKcal == null ? undefined : finiteNumberAt(item.caloriesKcal, `${path}.caloriesKcal`, { min: 0, max: 20_000 }) as number,
+    includedInSteps: item.includedInSteps == null ? undefined : booleanAt(item.includedInSteps, `${path}.includedInSteps`),
     durationMinutes: finiteNumberAt(
       item.durationMinutes,
       `${path}.durationMinutes`,
@@ -681,7 +687,7 @@ function dailyMetabolismEntryAt(
     id: dateKeyAt(item.id, `${path}.id`),
     date: dateKeyAt(item.date, `${path}.date`),
     weightKg: finiteNumberAt(item.weightKg, `${path}.weightKg`, {
-      min: 30,
+      min: item.metabolismComplete === false ? 0 : 30,
       max: 350
     }) as number,
     bodyFatPercent:
@@ -701,6 +707,16 @@ function dailyMetabolismEntryAt(
             max: 200_000
           }) as number),
     dietComplete: booleanAt(item.dietComplete, `${path}.dietComplete`),
+    metabolismComplete: item.metabolismComplete == null ? undefined : booleanAt(item.metabolismComplete, `${path}.metabolismComplete`),
+    tdeeSnapshot: item.tdeeSnapshot == null ? undefined : (() => {
+      const snapshot = objectAt(item.tdeeSnapshot, `${path}.tdeeSnapshot`);
+      const source = stringAt(snapshot.source, `${path}.tdeeSnapshot.source`);
+      if (source !== "detail" && source !== "simple" && source !== "learning") invalid(path, "TDEE 계산 방식이 올바르지 않습니다.");
+      const simpleLevel = snapshot.simpleLevel == null ? undefined : stringAt(snapshot.simpleLevel, `${path}.tdeeSnapshot.simpleLevel`);
+      if (simpleLevel !== undefined && !["sedentary", "light", "moderate", "high", "very_high"].includes(simpleLevel)) invalid(path, "저장된 활동 수준이 올바르지 않습니다.");
+      return { kcal: finiteNumberAt(snapshot.kcal, `${path}.tdeeSnapshot.kcal`, { min: 1, max: 100_000 }) as number,
+        calculatedAt: isoDateAt(snapshot.calculatedAt, `${path}.tdeeSnapshot.calculatedAt`), source, simpleLevel: simpleLevel as SimpleActivityLevel | undefined };
+    })(),
     jobActivities: item.jobActivities.map((activity, index) =>
       dailyWorkActivityAt(activity, `${path}.jobActivities[${index}]`)
     ),
@@ -842,10 +858,23 @@ export function parseBackup(value: string | unknown): DietLogBackup {
     }
   }
 
+  let dailyCompletions: DailyCompletion[] | undefined;
+  if (root.dailyCompletions !== undefined) {
+    if (!Array.isArray(root.dailyCompletions)) invalid("dailyCompletions", "목록이어야 합니다.");
+    dailyCompletions = root.dailyCompletions.map((value, index) => {
+      const path = `dailyCompletions[${index}]`;
+      const item = objectAt(value, path);
+      return { id: dateKeyAt(item.id, `${path}.id`), dietComplete: booleanAt(item.dietComplete, `${path}.dietComplete`),
+        updatedAt: isoDateAt(item.updatedAt, `${path}.updatedAt`) };
+    });
+    if (new Set(dailyCompletions.map((item) => item.id)).size !== dailyCompletions.length) invalid("dailyCompletions", "날짜가 중복되었습니다.");
+  }
+
   return {
     app: APP_NAME,
     schemaVersion: 2,
     favoriteFoods,
+    dailyCompletions,
     // Backups created before this flag existed always included every photo.
     photosIncluded:
       root.photosIncluded == null
@@ -891,13 +920,14 @@ export async function createBackup(
   options: BackupOptions = {}
 ): Promise<DietLogBackup> {
   const includePhotos = options.includePhotos ?? true;
-  const [settings, records, metabolismProfile, metabolismEntries, favoriteFoods] =
+  const [settings, records, metabolismProfile, metabolismEntries, favoriteFoods, dailyCompletions] =
     await Promise.all([
     getSettings(),
     listRecords(),
     getMetabolismProfile(),
     listDailyMetabolismEntries(),
-    listFavoriteFoods()
+    listFavoriteFoods(),
+    listDailyCompletions()
   ]);
   if (!includePhotos) {
     return {
@@ -905,6 +935,7 @@ export async function createBackup(
       schemaVersion: 2,
       photosIncluded: false,
       favoriteFoods,
+      dailyCompletions,
       exportedAt: new Date().toISOString(),
       settings,
       records: records.map((record) => ({ ...record, photoIds: [] })),
@@ -939,6 +970,7 @@ export async function createBackup(
     schemaVersion: 2,
     photosIncluded: true,
     favoriteFoods,
+    dailyCompletions,
     exportedAt: new Date().toISOString(),
     settings,
     records,
@@ -979,6 +1011,11 @@ export async function importBackup(
         ? await source.text()
         : source;
   const backup = parseBackup(raw);
+  if (backup.dailyCompletions === undefined) {
+    const legacy = legacyEnergyData(backup.records, backup.metabolismEntries, backup.metabolismProfile, backup.settings.dayStartHour);
+    backup.dailyCompletions = legacy.dailyCompletions.map((item) => ({ ...item, updatedAt: backup.exportedAt }));
+    backup.metabolismEntries = legacy.metabolismEntries;
+  }
   const photoAssets: PhotoAsset[] = backup.photos.map((photo) => ({
     id: photo.id,
     recordId: photo.recordId,
@@ -1002,7 +1039,8 @@ export async function importBackup(
     db.settings,
     db.metabolismProfiles,
     db.dailyMetabolismEntries,
-    db.favoriteFoods],
+    db.favoriteFoods,
+    db.dailyCompletions],
     async () => {
       // Older backups have no favorites field: preserve data they could never
       // contain, even in replace mode. An explicit [] does replace it.
@@ -1020,6 +1058,8 @@ export async function importBackup(
         }
       }
       if (mode === "replace") {
+        await db.dailyCompletions.clear();
+        await db.dailyCompletions.bulkPut(backup.dailyCompletions ?? []);
         await db.photos.clear();
         await db.records.clear();
         await db.settings.clear();
@@ -1150,6 +1190,35 @@ export async function importBackup(
         if (incomingMetabolismEntries.length > 0) {
           await db.dailyMetabolismEntries.bulkPut(incomingMetabolismEntries);
         }
+
+        const effectiveSettings = await db.settings.get("app");
+        const hour = effectiveSettings?.dayStartHour ?? 2;
+        const currentRecords = await db.records.toArray();
+        const affectedDays = new Set(incomingRecords.map((record) => getRecordDayKey(record, hour)));
+        existingRecords.forEach((record) => { if (record && incomingRecordIds.has(record.id)) affectedDays.add(getRecordDayKey(record, hour)); });
+        const candidates = new Map((backup.dailyCompletions ?? []).map((item) => [item.id, item]));
+        for (const day of affectedDays) if (!candidates.has(day)) {
+          await db.dailyCompletions.put({ id: day, dietComplete: false, updatedAt: new Date().toISOString() });
+        }
+        for (const completion of candidates.values()) {
+          const stored = await db.dailyCompletions.get(completion.id);
+          if (stored && Date.parse(stored.updatedAt) >= Date.parse(completion.updatedAt)) {
+            if (affectedDays.has(completion.id)) {
+              await db.dailyCompletions.put({ id: completion.id, dietComplete: false, updatedAt: new Date().toISOString() });
+            }
+            continue;
+          }
+          const recordsForDay = currentRecords.filter((record) => getRecordDayKey(record, hour) === completion.id);
+          const backedUpForDay = backup.records.filter((record) => getRecordDayKey(record, backup.settings.dayStartHour) === completion.id);
+          const matchesBackup = hour === backup.settings.dayStartHour && recordsForDay.length === backedUpForDay.length &&
+            recordsForDay.every((record) => backedUpForDay.some((incoming) => incoming.id === record.id && incoming.updatedAt === record.updatedAt));
+          // Never apply an older completion to a newer or additional meal.
+          const dietComplete = completion.dietComplete && matchesBackup && recordsForDay.length > 0;
+          await db.dailyCompletions.put({ ...completion, dietComplete });
+        }
+        // Learning and statistics share the same canonical food completion.
+        const completions = new Map((await db.dailyCompletions.toArray()).map((item) => [item.id, item.dietComplete]));
+        await db.dailyMetabolismEntries.toCollection().modify((entry) => { entry.dietComplete = completions.get(entry.date) ?? false; });
       }
     }
   );
