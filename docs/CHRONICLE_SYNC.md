@@ -22,7 +22,7 @@ Dexie v4에 chronicleSync 테이블만 추가했다. 기존 6개 테이블을 �
 
 ## 재시도와 동시성
 
-- 원본 세 테이블(records/settings/dailyMetabolismEntries)의 커밋을 Dexie liveQuery로 감지하고 짧게 묶는다. 앱 시작 시 현재 수치 SHA-256 digest를 마지막 서버 확인 digest와 비교하므로 원본 저장 직후 앱이 종료되어도 누락을 복구한다.
+- 원본 네 테이블(records/settings/dailyMetabolismEntries/dailyCompletions)의 커밋을 Dexie liveQuery로 감지하고 짧게 묶는다. 앱 시작 시 현재 수치 SHA-256 digest를 마지막 서버 확인 digest와 비교하므로 원본 저장 직후 앱이 종료되어도 누락을 복구한다.
 - 읽기·큐 갱신은 같은 IndexedDB transaction으로 직렬화한다. 탭 간 전송은 지원되는 브라우저에서 Web Locks를 추가 사용한다. Web Locks가 없어 중복 전송되어도 불변 pending 및 revision 검증으로 동일 요청만 중복될 수 있다.
 - 네트워크 실패/5xx/429/408 및 응답 유실은 동일 mutationId·revision·payload를 그대로 재전송한다. 전송 도중 수정은 latest로 보관하고 앞선 응답이 새 입력을 지우지 못한다. 확인된 값으로 다시 취소한 경우도 앞선 전송 뒤에 되돌린 값을 전달한다.
 - 400/422/413 및 empty_initial_snapshot 확정 거부는 같은 실패 digest의 자동 재시도를 멈춘다. 원본 수치가 바뀌면 새 revision으로 복구한다. 401/403은 새 연결이 필요하다. 오래된 revision 응답은 서버 revision 이후에 현재 전체 투영을 보낸다.
@@ -33,6 +33,14 @@ Dexie v4에 chronicleSync 테이블만 추가했다. 기존 6개 테이블을 �
 CSP connect-src에 `https://life-chronicle.crhipse.workers.dev`만 추가했다. 요청은 credentials omit, cache no-store, redirect error이며 사용자 지정 서버 주소를 받지 않는다. CORS는 서버의 원본 `https://crhipse.github.io` 허용 설정이 필요하다. 서비스 워커는 기존 PWA 범위를 유지하고 Workbox의 자기 scope precache만 정리한다. cross-origin runtime cache 규칙을 추가하지 않았으므로 연동 POST나 토큰 응답을 캐시하지 않는다.
 
 ## 검증과 배포 담당자 확인
+
+### 2026-10-23 식단 저장완료 복구
+
+식단 탭과 대사량 탭에 `식단 저장완료` 버튼을 유지한다. 자동 완료된 날짜도 버튼을 눌러 직접 확정할 수 있으며, 완료 취소는 별도 버튼이다. 저장 후 즉시 연동 전송을 요청하고 서버 확인 상태를 버튼 아래에 표시한다. 연결되지 않은 경우 연결 안내를 표시하며 전송 완료로 표시하지 않는다.
+
+Dexie v5의 `dailyCompletions`에서 직접 지정한 완료/취소를 별도 수치 배열로 전송한다. 대사량이나 체중 기록이 없는 날에도 완료가 반영되며, 체중 0인 중간저장은 측정값으로 보내지 않는다. 자동 완료 표시는 전송하지 않고 서버의 기존 02시 파생 규칙을 유지한다. 위버맨쉬의 importDiet는 선택 필드 `dailyCompletions`를 받아 기존 식사 날짜에 적용하고, 기존 payload도 계속 지원한다.
+
+식단 탭은 선택 날짜의 저장된 TDEE와 섭취량−TDEE 수지를 표시한다. 양쪽 완료 전에는 입력 중인 추정치로 구분하며, 통계의 완료일만 집계하는 정책은 변경하지 않는다.
 
 `pnpm test`, `pnpm build`를 사용한다. 새 테스트는 수치 허용 목록·누락 영양·목표/체중/날짜 이력, 코드 교환 유실, 오프라인 재시작, 불변 재전송, 전송 중 되돌리기, 요청/본문 시간 초과, 연결 해제 후 늦은 응답, 확정 거절 복구, 탭 동시성, 실제 저장·삭제·목표·체중·백업 경로 관찰, 비밀 백업 제외, v3→v4 기존 자료 보존을 다룬다.
 

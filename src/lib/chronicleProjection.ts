@@ -1,10 +1,10 @@
-import type { AppSettings, DailyMetabolismEntry, FoodRecord, Nutrients } from "../types";
+import type { AppSettings, DailyCompletion, DailyMetabolismEntry, FoodRecord, Nutrients } from "../types";
 
 const nutrientKeys = ["energyKcal", "carbsG", "proteinG", "fatG", "sugarG", "sodiumMg", "fiberG", "saturatedFatG"] as const;
 const byId = <T extends { id: string }>(a: T, b: T) => a.id.localeCompare(b.id, "en");
 
 /** Explicit allowlist: source backups, photos and AI inputs never enter the sync queue. */
-export function projectDietSnapshot(records: FoodRecord[], settings: AppSettings, entries: DailyMetabolismEntry[], exportedAt = new Date().toISOString()) {
+export function projectDietSnapshot(records: FoodRecord[], settings: AppSettings, entries: DailyMetabolismEntry[], exportedAt = new Date().toISOString(), completions: DailyCompletion[] = []) {
   return {
     app: "식단관리" as const,
     schemaVersion: 2 as const,
@@ -38,13 +38,18 @@ export function projectDietSnapshot(records: FoodRecord[], settings: AppSettings
         nutrients: Object.fromEntries(nutrientKeys.map(key => [key, food.nutrients[key] ?? null])) as unknown as Nutrients
       })).sort(byId)
     })).sort(byId),
-    metabolismEntries: entries.map(entry => ({
+    // In-progress weight=0 is not a measurement and would invalidate the entire
+    // server snapshot. Food-only confirmation travels separately, without a fake weight.
+    metabolismEntries: entries.filter(entry => Number.isFinite(entry.weightKg) && entry.weightKg > 0).map(entry => ({
       id: entry.id,
       date: entry.date,
       weightKg: entry.weightKg,
       // Server applies its clock to automatic closure; keep manual intent unchanged.
       dietComplete: entry.dietComplete && !entry.dietCompletedAutomatically,
       updatedAt: entry.updatedAt
+    })).sort(byId),
+    dailyCompletions: completions.filter(completion => !completion.automatic).map(completion => ({
+      id: completion.id, dietComplete: completion.dietComplete, updatedAt: completion.updatedAt
     })).sort(byId)
   };
 }
@@ -56,7 +61,8 @@ export async function dietSnapshotDigest(payload: DietSyncPayload): Promise<stri
   const identity = {
     settings: payload.settings,
     records: payload.records.map(({ updatedAt: _updatedAt, ...record }) => record),
-    metabolismEntries: payload.metabolismEntries.map(({ updatedAt: _updatedAt, ...entry }) => entry)
+    metabolismEntries: payload.metabolismEntries.map(({ updatedAt: _updatedAt, ...entry }) => entry),
+    dailyCompletions: payload.dailyCompletions.map(({ updatedAt: _updatedAt, ...completion }) => completion)
   };
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(identity)));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");

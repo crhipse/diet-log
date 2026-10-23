@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import CalendarSheet from "../components/CalendarSheet";
+import DietSaveCompletion from "../components/DietSaveCompletion";
 import {
   calculateBmr,
   calculateSimpleTdee,
@@ -52,6 +53,9 @@ interface MetabolismScreenProps {
   profile: MetabolismProfile | null;
   entry: DailyMetabolismEntry | null;
   automaticDietComplete?: boolean;
+  dietComplete?: boolean;
+  dietManuallyComplete?: boolean;
+  onCompleteDiet?: (complete: boolean) => void;
   history: DailyMetabolismEntry[];
   intakeByDate: Readonly<Record<string, number>>;
   isBusy?: boolean;
@@ -235,6 +239,9 @@ export default function MetabolismScreen({
   profile,
   entry,
   automaticDietComplete = false,
+  dietComplete = false,
+  dietManuallyComplete = false,
+  onCompleteDiet,
   history,
   intakeByDate,
   isBusy = false,
@@ -628,6 +635,9 @@ export default function MetabolismScreen({
           <button className="primary-button" type="button" disabled={isBusy || !dailyEstimate || !summaryEstimate}
             onClick={() => void saveEntryDraft(true)}>대사량 기록 완료</button>
         </div>
+        {onCompleteDiet && <DietSaveCompletion complete={dietComplete} manual={dietManuallyComplete}
+          disabled={isBusy || !dietRecordDays.includes(selectedDay)}
+          onComplete={() => onCompleteDiet(true)} onCancel={() => onCompleteDiet(false)} />}
       </div>
 
       {calendarOpen && (

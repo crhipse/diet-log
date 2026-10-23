@@ -1584,6 +1584,16 @@ p {
 }
 .diet-completion { padding: 0 16px 18px; }
 .diet-completion > button { width: 100%; }
+.home-energy { display: grid; grid-template-columns: 1fr 1.2fr; gap: 10px; margin: 0 16px 15px; padding: 15px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface-soft); }
+.home-energy > div { display: grid; gap: 7px; min-width: 0; }
+.home-energy > div > span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.home-energy strong { font-size: clamp(16px, 4.4vw, 20px); letter-spacing: -.03em; }
+.home-energy > small { grid-column: 1 / -1; font-size: 10px; color: var(--muted); }
+.diet-save-completion { display: grid; gap: 8px; }
+.diet-save-completion__actions { display: flex; align-items: center; gap: 8px; }
+.diet-save-completion__actions .primary-button { flex: 1; }
+.diet-save-completion > small { color: var(--muted); font-size: 11px; }
+.diet-save-completion__sync { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; line-height: 1.5; }
 /* Optional Chronicle sync lives in settings; it never overlays food entry. */
 .chronicle-sync-card__connect { display: grid; gap: 10px; }
 .chronicle-sync-card .field-hint { margin: 10px 0; font-size: 12px; line-height: 1.6; color: var(--text-muted, #6d7167); }

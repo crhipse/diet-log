@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import CalendarSheet from "../components/CalendarSheet";
+import DietSaveCompletion from "../components/DietSaveCompletion";
 import {
   formatKcal,
   formatMacroLine,
@@ -34,6 +35,10 @@ interface HomeScreenProps {
   onAddRecord: () => void;
   onOpenRecord: (id: string) => void;
   dietComplete?: boolean;
+  dietManuallyComplete?: boolean;
+  tdeeKcal?: number;
+  balanceKcal?: number;
+  energyConfirmed?: boolean;
   isBusy?: boolean;
   onCompleteDiet?: (complete: boolean) => void;
 }
@@ -55,6 +60,10 @@ export default function HomeScreen({
   onAddRecord,
   onOpenRecord,
   dietComplete = false,
+  dietManuallyComplete = false,
+  tdeeKcal,
+  balanceKcal,
+  energyConfirmed = false,
   isBusy = false,
   onCompleteDiet
 }: HomeScreenProps) {
@@ -121,11 +130,17 @@ export default function HomeScreen({
         <p>{formatMacroLine(totals)}</p>
       </section>
 
-      {onCompleteDiet && records.length > 0 && <div className="diet-completion">
-        <button type="button" className={dietComplete ? "secondary-button" : "primary-button"}
-          disabled={isBusy} onClick={() => onCompleteDiet(!dietComplete)}>
-          {dietComplete ? "식단 완료됨 · 완료 취소" : "식단 기록 완료"}
-        </button>
+      <section className="home-energy" aria-label="선택 날짜의 TDEE와 칼로리 수지">
+        <div><span>TDEE</span><strong>{formatKcal(tdeeKcal)}</strong></div>
+        <div><span>칼로리 수지</span><strong className={balanceKcal !== undefined && balanceKcal > 0 ? "energy-surplus" : "energy-deficit"}>
+          {balanceKcal === undefined ? "—" : balanceKcal === 0 ? "균형 0 kcal" : `${balanceKcal > 0 ? "흑자" : "적자"} ${Math.round(Math.abs(balanceKcal)).toLocaleString("ko-KR")} kcal`}
+        </strong></div>
+        <small>{energyConfirmed ? "완료 기록 기준" : tdeeKcal === undefined ? "대사량을 입력하면 수지를 볼 수 있어요" : "입력 중 · 현재 기록한 섭취량 기준"}</small>
+      </section>
+
+      {onCompleteDiet && <div className="diet-completion">
+        <DietSaveCompletion complete={dietComplete} manual={dietManuallyComplete} disabled={isBusy || records.length === 0}
+          onComplete={() => onCompleteDiet(true)} onCancel={() => onCompleteDiet(false)} />
       </div>}
 
       <section className="timeline" aria-labelledby="timeline-title">

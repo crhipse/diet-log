@@ -11,7 +11,8 @@ import RecordEditorScreen, {
 } from "./screens/RecordEditorScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import StatisticsScreen from "./screens/StatisticsScreen";
-import { dailyEnergyBalances } from "./lib/energyBalance";
+import { completeIntake, dailyEnergyBalances } from "./lib/energyBalance";
+import { chronicleSync } from "./lib/chronicleSync";
 import { analyzeFoodRecord, testApiKey } from "./lib/ai";
 import {
   db,
@@ -269,6 +270,18 @@ export default function App() {
 
   const energyPoints = useMemo(() => settings ? dailyEnergyBalances(records, metabolismEntries,
     effectiveCompletions, settings.dayStartHour, todayDay) : [], [records, metabolismEntries, effectiveCompletions, settings, todayDay]);
+
+  const selectedCompletion = effectiveCompletions.find((item) => item.id === selectedDay);
+  const homeEnergy = useMemo(() => {
+    const entry = selectedMetabolismEntry;
+    let tdeeKcal = entry?.metabolismComplete ? entry.tdeeSnapshot?.kcal : undefined;
+    if (tdeeKcal === undefined && entry && metabolismProfile) {
+      try { tdeeKcal = estimateDailyEnergy(metabolismProfile, entry).tdeeKcal; } catch { /* Draft lacks required data. */ }
+    }
+    const intake = completeIntake(dayRecords);
+    return { tdeeKcal, balanceKcal: tdeeKcal !== undefined && intake !== null ? intake - tdeeKcal : undefined,
+      confirmed: Boolean(selectedCompletion?.dietComplete && entry?.metabolismComplete && entry.tdeeSnapshot && intake !== null) };
+  }, [selectedMetabolismEntry, metabolismProfile, dayRecords, selectedCompletion?.dietComplete]);
 
   const intakeByDate = useMemo(() => {
     if (!settings) return {};
@@ -789,8 +802,10 @@ export default function App() {
     setBusy(true);
     try {
       await setDietCompletion(selectedDay, complete);
-      await reloadMetabolism();
-      notify(complete ? "식단 기록을 완료했어요." : "식단 완료 표시를 취소했어요.");
+      // Updating food completion must not replace an unsaved activity draft.
+      setCompletions(await listDailyCompletions());
+      notify(complete ? "식단 저장완료. 아래에서 위버맨쉬 연동 상태를 확인해주세요." : "식단 완료 표시를 취소했어요.");
+      void chronicleSync.flush();
     } catch (error) { notify(errorMessage(error, "완료 상태를 저장하지 못했습니다."), "error"); }
     finally { setBusy(false); }
   };
@@ -934,6 +949,10 @@ export default function App() {
           onAddRecord={() => void openEditor()}
           onOpenRecord={(recordId) => setScreen({ name: "detail", recordId })}
           dietComplete={effectiveCompletions.some((item) => item.id === selectedDay && item.dietComplete)}
+          dietManuallyComplete={Boolean(selectedCompletion?.dietComplete && !selectedCompletion.automatic)}
+          tdeeKcal={homeEnergy.tdeeKcal}
+          balanceKcal={homeEnergy.balanceKcal}
+          energyConfirmed={homeEnergy.confirmed}
           isBusy={busy}
           onCompleteDiet={(complete) => void completeDiet(complete)}
         />
@@ -972,6 +991,9 @@ export default function App() {
           profile={metabolismProfile}
           entry={selectedMetabolismEntry}
           automaticDietComplete={effectiveCompletions.some((item) => item.id === selectedDay && item.dietComplete && item.automatic)}
+          dietComplete={Boolean(selectedCompletion?.dietComplete)}
+          dietManuallyComplete={Boolean(selectedCompletion?.dietComplete && !selectedCompletion.automatic)}
+          onCompleteDiet={(complete) => void completeDiet(complete)}
           history={learningEntries}
           intakeByDate={intakeByDate}
           isBusy={busy}

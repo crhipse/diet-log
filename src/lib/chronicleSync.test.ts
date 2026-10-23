@@ -1,7 +1,7 @@
 import Dexie from "dexie";
 import { DEFAULT_SETTINGS, EMPTY_NUTRIENTS } from "../constants";
-import type { DailyMetabolismEntry, FoodRecord } from "../types";
-import { DietLogDatabase, db, saveRecord, deleteRecordWithPhotos, saveGoalSettings, saveSettings, saveDailyMetabolismEntry, deleteDailyMetabolismEntry } from "./db";
+import type { DailyCompletion, DailyMetabolismEntry, FoodRecord } from "../types";
+import { DietLogDatabase, db, saveRecord, deleteRecordWithPhotos, saveGoalSettings, saveSettings, saveDailyMetabolismEntry, deleteDailyMetabolismEntry, setDietCompletion } from "./db";
 import { createBackup, importBackup } from "./export";
 import { appendGoalTarget, goalTargetFromRecommendation } from "./goalHistory";
 import { calculateGoalRecommendation } from "./goals";
@@ -47,6 +47,16 @@ async function connected(target = database) {
 }
 
 describe("numeric projection", () => {
+  it("체중 미입력 중간저장은 측정값으로 보내지 않고 수동 식단 완료는 별도로 보낸다", async () => {
+    const completion: DailyCompletion = { id: "2026-09-13", dietComplete: true, updatedAt: at };
+    const payload = projectDietSnapshot([record()], DEFAULT_SETTINGS, [entry("2026-09-13", 0)], at, [completion]);
+    expect(payload.metabolismEntries).toEqual([]);
+    expect(payload.dailyCompletions).toEqual([completion]);
+    const before = projectDietSnapshot([record()], DEFAULT_SETTINGS, [], at, [{ ...completion, dietComplete: false }]);
+    expect(await dietSnapshotDigest(payload)).not.toBe(await dietSnapshotDigest(before));
+    expect(await dietSnapshotDigest(projectDietSnapshot([record()], DEFAULT_SETTINGS, [], at,
+      [{ ...completion, automatic: true }]))).toBe(await dietSnapshotDigest(projectDietSnapshot([record()], DEFAULT_SETTINGS, [], at)));
+  });
   it("allowlists only adapter fields, preserves missing nutrients and dated goals/weight", async () => {
     const source = record(); source.photoIds = ["private-photo"];
     const targets = appendGoalTarget(appendGoalTarget(undefined, goal()), goal("goal-b", "2026-09-14", 79));
@@ -207,6 +217,24 @@ describe("durable outbox", () => {
 describe("source storage integration", () => {
   beforeEach(async () => { await db.delete(); await db.open(); });
   afterEach(async () => { await db.delete(); });
+  it("대사량 없이 식단 저장완료만 눌러도 자동 전송과 서버 확인을 처리한다", async () => {
+    const sent: Sent[] = [];
+    const fetcher = vi.fn<typeof fetch>(async (_, init) => { const body = JSON.parse(init!.body as string); sent.push(body); return accepted(body); });
+    await connected(db);
+    const sync = client(fetcher, {}, db); sync.start();
+    await saveRecord(record());
+    await vi.waitFor(() => expect(sent.at(-1)?.payload.records).toHaveLength(1));
+    await setDietCompletion("2026-09-13", true);
+    await vi.waitFor(() => expect(sent.at(-1)?.payload.dailyCompletions).toEqual([
+      expect.objectContaining({ id: "2026-09-13", dietComplete: true })
+    ]));
+    await vi.waitFor(() => expect(sync.getStatus().phase).toBe("synced"));
+    expect(sent.at(-1)?.payload.metabolismEntries).toEqual([]);
+    expect(await db.dailyMetabolismEntries.count()).toBe(0);
+    await setDietCompletion("2026-09-13", false);
+    await vi.waitFor(() => expect(sent.at(-1)?.payload.dailyCompletions[0].dietComplete).toBe(false));
+    sync.stop();
+  });
   it("observes save/delete, dated goals/weight, day boundaries and backup replacement; never exports sync secrets", async () => {
     const sent: Sent[] = [];
     const fetcher = vi.fn<typeof fetch>(async (_, init) => { const body = JSON.parse(init!.body as string); sent.push(body); return accepted(body); });

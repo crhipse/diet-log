@@ -57,8 +57,8 @@ export class ChronicleSyncClient {
     // Observe committed source changes, including backup replacement and goal/weight history.
     // The outbox is deliberately absent from this query, preventing an update loop.
     const sourceSubscription = liveQuery(() => this.database.transaction("r",
-      [this.database.records, this.database.settings, this.database.dailyMetabolismEntries],
-      () => Promise.all([this.database.records.toArray(), this.database.settings.get("app"), this.database.dailyMetabolismEntries.toArray()])
+      [this.database.records, this.database.settings, this.database.dailyMetabolismEntries, this.database.dailyCompletions],
+      () => Promise.all([this.database.records.toArray(), this.database.settings.get("app"), this.database.dailyMetabolismEntries.toArray(), this.database.dailyCompletions.toArray()])
     )).subscribe({ next: () => this.schedule(this.debounceMs), error: () => this.publishStorageError() });
     const resume = () => { if (document.visibilityState !== "hidden") this.schedule(0); };
     window.addEventListener("online", resume);
@@ -111,13 +111,13 @@ export class ChronicleSyncClient {
    * IndexedDB serialization prevents two tabs assigning different bodies to one revision.
    */
   async refresh(): Promise<void> {
-    await this.database.transaction("rw", [this.database.records, this.database.settings, this.database.dailyMetabolismEntries, this.database.chronicleSync], async () => {
+    await this.database.transaction("rw", [this.database.records, this.database.settings, this.database.dailyMetabolismEntries, this.database.dailyCompletions, this.database.chronicleSync], async () => {
       const state = await this.database.chronicleSync.get("chronicle");
       if (!state?.token) return;
-      const [records, settings, entries] = await Promise.all([
-        this.database.records.toArray(), this.database.settings.get("app"), this.database.dailyMetabolismEntries.toArray()
+      const [records, settings, entries, completions] = await Promise.all([
+        this.database.records.toArray(), this.database.settings.get("app"), this.database.dailyMetabolismEntries.toArray(), this.database.dailyCompletions.toArray()
       ]);
-      const payload = projectDietSnapshot(records, settings ?? DEFAULT_SETTINGS, entries, this.now());
+      const payload = projectDietSnapshot(records, settings ?? DEFAULT_SETTINGS, entries, this.now(), completions);
       const digest = await Dexie.waitFor(dietSnapshotDigest(payload));
       let changed = false;
       if (state.pending && state.rejectedDigest === state.pending.digest && digest !== state.rejectedDigest) {
