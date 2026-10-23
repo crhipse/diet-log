@@ -27,6 +27,24 @@ const entry: DailyMetabolismEntry = {
   updatedAt: "2026-07-26T00:00:00.000Z"
 };
 
+test.each([
+  ["기본 정보 미입력", null, null],
+  ["체중 미입력", profile, null],
+  ["기존 정보 있음", profile, entry]
+] as const)("내 기본 정보는 %s 상태에서도 기본으로 접혀 있고 직접 펼칠 수 있다", async (_label, savedProfile, savedEntry) => {
+  const { container } = render(<MetabolismScreen selectedDay={entry.date} todayDay={entry.date} dateLabel="7월 26일" isToday
+    dietRecordDays={[]} metabolismRecordDays={[]} profile={savedProfile} entry={savedEntry} history={[]} intakeByDate={{}}
+    onPreviousDate={vi.fn()} onNextDate={vi.fn()} onSelectDate={vi.fn()} onOpenSettings={vi.fn()}
+    onSaveProfile={vi.fn()} onSaveDay={vi.fn()} />);
+  const card = container.querySelector("details.metabolism-profile");
+  expect(card).not.toHaveAttribute("open");
+  fireEvent.click(screen.getByText("내 기본 정보"));
+  await waitFor(() => expect(card).toHaveAttribute("open"));
+  expect(screen.getByRole("button", { name: "기본 정보 저장" })).toBeVisible();
+  fireEvent.click(screen.getByText("내 기본 정보"));
+  await waitFor(() => expect(card).not.toHaveAttribute("open"));
+});
+
 test("중간저장과 완료는 별개이며 운동기기 입력값과 걸음 수 중복 선택을 저장한다", async () => {
   const save = vi.fn().mockResolvedValue(undefined);
   render(<MetabolismScreen selectedDay={entry.date} todayDay={entry.date} dateLabel="7월 26일" isToday
@@ -208,6 +226,8 @@ test("저장된 신장은 숨기고 변경할 때만 빈 입력칸을 연다", a
     />
   );
 
+  fireEvent.click(screen.getByText("내 기본 정보"));
+  await waitFor(() => expect(screen.getByRole("button", { name: "신장 변경" })).toBeVisible());
   expect(screen.queryByText("175cm")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("새 신장 (cm)")).not.toBeInTheDocument();
   expect(screen.getAllByText("신장 입력 완료")).not.toHaveLength(0);
@@ -240,7 +260,7 @@ test("저장된 신장은 숨기고 변경할 때만 빈 입력칸을 연다", a
   expect(screen.queryByText("180cm")).not.toBeInTheDocument();
 });
 
-test("처음 등록하는 신장은 기본값 없이 직접 입력한다", () => {
+test("처음 등록하는 신장은 기본값 없이 직접 입력한다", async () => {
   render(
     <MetabolismScreen
       selectedDay="2026-07-26"
@@ -262,6 +282,8 @@ test("처음 등록하는 신장은 기본값 없이 직접 입력한다", () =>
     />
   );
 
+  fireEvent.click(screen.getByText("내 기본 정보"));
+  await waitFor(() => expect(screen.getByLabelText("신장 (cm)")).toBeVisible());
   const heightInput = screen.getByLabelText("신장 (cm)") as HTMLInputElement;
   expect(heightInput.value).toBe("");
   expect(

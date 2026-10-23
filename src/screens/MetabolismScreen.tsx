@@ -721,7 +721,7 @@ function ProfileCard({
   onSaveHeight: () => void;
   onSave: () => void;
 }) {
-  const [isOpen, setIsOpen] = useState(!bmr);
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
     <details
