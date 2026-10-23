@@ -1584,3 +1584,8 @@ p {
 }
 .diet-completion { padding: 0 16px 18px; }
 .diet-completion > button { width: 100%; }
+/* Optional Chronicle sync lives in settings; it never overlays food entry. */
+.chronicle-sync-card__connect { display: grid; gap: 10px; }
+.chronicle-sync-card .field-hint { margin: 10px 0; font-size: 12px; line-height: 1.6; color: var(--text-muted, #6d7167); }
+.chronicle-sync-card .field-label { font-size: 13px; font-weight: 700; }
+.chronicle-sync-card input { width: 100%; min-height: 44px; border: 1px solid var(--border, #d6d7ce); border-radius: 10px; padding: 10px 12px; font: inherit; background: #fff; color: #171712; }

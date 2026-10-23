@@ -38,6 +38,8 @@ export default defineConfig(({ command, isPreview }) => ({
         ]
       },
       workbox: {
+        // Workbox cleanup is restricted to this SW scope. Do not add a cross-origin
+        // runtime cache: Chronicle POST requests contain private connection tokens.
         cleanupOutdatedCaches: true,
         navigateFallback: "index.html",
         globPatterns: ["**/*.{js,css,html,png,ico,webmanifest}"]

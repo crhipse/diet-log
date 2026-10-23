@@ -14,6 +14,7 @@ import StatisticsScreen from "./screens/StatisticsScreen";
 import { dailyEnergyBalances } from "./lib/energyBalance";
 import { analyzeFoodRecord, testApiKey } from "./lib/ai";
 import {
+  db,
   deleteRecordWithPhotos,
   getMetabolismProfile,
   getPhotosForRecord,
@@ -29,6 +30,7 @@ import {
   saveRecord,
   saveSettings
 } from "./lib/db";
+import { automaticDietCompletionDates, resolveDailyCompletion, startDietAutoCompletion } from "./lib/dietCompletion";
 import {
   addDays,
   formatDayLabel,
@@ -115,6 +117,7 @@ export default function App() {
   const [settings, setSettingsState] = useState<AppSettings | null>(null);
   const [selectedDay, setSelectedDay] = useState("");
   const [todayDay, setTodayDay] = useState("");
+  const [completionNow, setCompletionNow] = useState(() => new Date());
   const [credential, setCredential] = useState(loadApiKey);
   const [storagePersisted, setStoragePersisted] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
@@ -155,6 +158,11 @@ export default function App() {
     setMetabolismEntries(entries);
     setCompletions(nextCompletions);
   }, []);
+
+  useEffect(() => startDietAutoCompletion(db, {
+    onCheck: setCompletionNow,
+    onError: () => notify("식단 자동 완료를 갱신하지 못했습니다. 앱을 다시 열면 재시도합니다.", "error")
+  }), [notify]);
 
   useEffect(() => {
     let active = true;
@@ -241,16 +249,26 @@ export default function App() {
   const selectedMetabolismEntry =
     metabolismEntries.find((entry) => entry.date === selectedDay) ?? null;
 
+  const automaticDietDays = useMemo(() => settings
+    ? automaticDietCompletionDates(records, settings.dayStartHour, completionNow) : new Set<string>(),
+  [records, settings, completionNow]);
+
+  const effectiveCompletions = useMemo(() => {
+    const stored = new Map(completions.map((item) => [item.id, item]));
+    return [...new Set([...stored.keys(), ...automaticDietDays])].map((date) =>
+      resolveDailyCompletion(date, stored.get(date), automaticDietDays.has(date), completionNow));
+  }, [completions, automaticDietDays, completionNow]);
+
   const learningEntries = useMemo(() => {
     if (!settings) return [];
     const today = getTodayDayKey(settings.dayStartHour);
-    const completedDates = new Set(completions.filter((item) => item.dietComplete).map((item) => item.id));
+    const completedDates = new Set(effectiveCompletions.filter((item) => item.dietComplete).map((item) => item.id));
     return metabolismEntries.filter((entry) => entry.date <= today && entry.metabolismComplete && entry.weightKg > 0)
       .map((entry) => ({ ...entry, dietComplete: completedDates.has(entry.date) }));
-  }, [metabolismEntries, settings, completions]);
+  }, [metabolismEntries, settings, effectiveCompletions]);
 
   const energyPoints = useMemo(() => settings ? dailyEnergyBalances(records, metabolismEntries,
-    completions, settings.dayStartHour, todayDay) : [], [records, metabolismEntries, completions, settings, todayDay]);
+    effectiveCompletions, settings.dayStartHour, todayDay) : [], [records, metabolismEntries, effectiveCompletions, settings, todayDay]);
 
   const intakeByDate = useMemo(() => {
     if (!settings) return {};
@@ -915,7 +933,7 @@ export default function App() {
           onOpenSettings={() => setScreen({ name: "settings", from: "home" })}
           onAddRecord={() => void openEditor()}
           onOpenRecord={(recordId) => setScreen({ name: "detail", recordId })}
-          dietComplete={completions.some((item) => item.id === selectedDay && item.dietComplete)}
+          dietComplete={effectiveCompletions.some((item) => item.id === selectedDay && item.dietComplete)}
           isBusy={busy}
           onCompleteDiet={(complete) => void completeDiet(complete)}
         />
@@ -953,6 +971,7 @@ export default function App() {
           metabolismRecordDays={metabolismRecordDays}
           profile={metabolismProfile}
           entry={selectedMetabolismEntry}
+          automaticDietComplete={effectiveCompletions.some((item) => item.id === selectedDay && item.dietComplete && item.automatic)}
           history={learningEntries}
           intakeByDate={intakeByDate}
           isBusy={busy}

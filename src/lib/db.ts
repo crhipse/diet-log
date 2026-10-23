@@ -19,6 +19,8 @@ import type { GoalSettings } from "./goalHistory";
 import { validateGoalSettings } from "./goalHistory";
 import { getRecordDayKey } from "./date";
 import { completeIntake, legacyEnergyData } from "./energyBalance";
+import type { ChronicleSyncState } from "./chronicleSyncTypes";
+import { completionForSavedEntry } from "./dietCompletion";
 
 export const DATABASE_NAME = "diet-log";
 
@@ -30,6 +32,7 @@ export class DietLogDatabase extends Dexie {
   dailyMetabolismEntries!: Table<DailyMetabolismEntry, string>;
   favoriteFoods!: Table<FavoriteFood, string>;
   dailyCompletions!: Table<DailyCompletion, string>;
+  chronicleSync!: Table<ChronicleSyncState, "chronicle">;
 
   constructor(name = DATABASE_NAME) {
     super(name);
@@ -48,7 +51,8 @@ export class DietLogDatabase extends Dexie {
     this.version(3).stores({
       favoriteFoods: "&id, name, updatedAt"
     });
-    this.version(4).stores({ dailyCompletions: "&id, updatedAt" }).upgrade(async (tx) => {
+    this.version(4).stores({ chronicleSync: "&id" });
+    this.version(5).stores({ dailyCompletions: "&id, updatedAt" }).upgrade(async (tx) => {
       const [records, entries, profile, settings] = await Promise.all([
         tx.table("records").toArray(), tx.table("dailyMetabolismEntries").toArray(),
         tx.table("metabolismProfiles").get("metabolism"), tx.table("settings").get("app")
@@ -201,7 +205,7 @@ export async function deleteRecordWithPhotos(recordId: string): Promise<void> {
 async function invalidateDietCompletion(day: string): Promise<void> {
   await db.dailyCompletions.put({ id: day, dietComplete: false, updatedAt: new Date().toISOString() });
   const entry = await db.dailyMetabolismEntries.get(day);
-  if (entry?.dietComplete) await db.dailyMetabolismEntries.update(day, { dietComplete: false });
+  if (entry) await db.dailyMetabolismEntries.update(day, { dietComplete: false, dietCompletedAutomatically: undefined });
 }
 
 export function listDailyCompletions(): Promise<DailyCompletion[]> {
@@ -217,7 +221,7 @@ export async function setDietCompletion(day: string, complete: boolean): Promise
       if (completeIntake(records) === null) throw new Error("모든 음식의 칼로리 입력과 분석을 끝낸 뒤 완료해주세요.");
     }
     await db.dailyCompletions.put({ id: day, dietComplete: complete, updatedAt: new Date().toISOString() });
-    await db.dailyMetabolismEntries.update(day, { dietComplete: complete });
+    await db.dailyMetabolismEntries.update(day, { dietComplete: complete, dietCompletedAutomatically: undefined });
   });
 }
 
@@ -275,11 +279,16 @@ export async function saveSettings(
     goalSettings: current.goalSettings,
     updatedAt: new Date().toISOString()
   };
-  await db.transaction("rw", [db.settings, db.dailyCompletions, db.dailyMetabolismEntries], async () => {
+  await db.transaction("rw", [db.settings, db.records, db.dailyCompletions, db.dailyMetabolismEntries], async () => {
     await db.settings.put(next);
     if (dayStartHour !== current.dayStartHour) {
-      await db.dailyCompletions.clear();
-      await db.dailyMetabolismEntries.toCollection().modify({ dietComplete: false });
+      const affected = new Set<string>();
+      for (const record of await db.records.toArray()) {
+        const previous = getRecordDayKey(record, current.dayStartHour);
+        const nextDay = getRecordDayKey(record, dayStartHour);
+        if (previous !== nextDay) { affected.add(previous); affected.add(nextDay); }
+      }
+      for (const day of affected) await invalidateDietCompletion(day);
     }
   });
   return next;
@@ -328,8 +337,11 @@ export async function saveDailyMetabolismEntry(
   entry: DailyMetabolismEntry
 ): Promise<DailyMetabolismEntry> {
   validateDailyMetabolismEntry(entry);
-  await db.dailyMetabolismEntries.put(entry);
-  return entry;
+  return db.transaction("rw", [db.records, db.settings, db.dailyMetabolismEntries, db.dailyCompletions], async () => {
+    const next = await completionForSavedEntry(db, entry);
+    await db.dailyMetabolismEntries.put(next);
+    return next;
+  });
 }
 
 /**
@@ -345,13 +357,14 @@ export async function saveMetabolismProfileAndEntry(
   validateDailyMetabolismEntry(entry);
   await db.transaction(
     "rw",
+    db.records,
+    db.settings,
     db.metabolismProfiles,
     db.dailyMetabolismEntries,
     db.dailyCompletions,
     async () => {
       await db.metabolismProfiles.put(profile);
-      const completion = await db.dailyCompletions.get(entry.date);
-      await db.dailyMetabolismEntries.put({ ...entry, dietComplete: completion?.dietComplete ?? entry.dietComplete });
+      await db.dailyMetabolismEntries.put(await completionForSavedEntry(db, entry));
     }
   );
 }

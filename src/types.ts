@@ -106,6 +106,7 @@ export interface DietLogBackup {
 export interface DailyCompletion {
   id: string;
   dietComplete: boolean;
+  automatic?: boolean;
   updatedAt: string;
 }
 
@@ -222,6 +223,8 @@ export interface DailyMetabolismEntry {
   dietComplete: boolean;
   metabolismComplete?: boolean;
   tdeeSnapshot?: { kcal: number; calculatedAt: string; source: "detail" | "simple" | "learning"; simpleLevel?: SimpleActivityLevel };
+  /** Source-only provenance; automatic closure is not an explicit manual confirmation. */
+  dietCompletedAutomatically?: boolean;
   jobActivities: DailyWorkActivity[];
   exercises: DailyExercise[];
   createdAt: string;

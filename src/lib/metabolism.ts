@@ -308,6 +308,9 @@ export function validateDailyMetabolismEntry(
   if (typeof entry.dietComplete !== "boolean") {
     throw new Error("식단 기록 완료 여부가 올바르지 않습니다.");
   }
+  if (entry.dietCompletedAutomatically !== undefined && typeof entry.dietCompletedAutomatically !== "boolean") {
+    throw new Error("식단 자동 완료 여부가 올바르지 않습니다.");
+  }
   assertIsoTimestamp(entry.createdAt, "기록 생성 시각");
   assertIsoTimestamp(entry.updatedAt, "기록 수정 시각");
   assertUniqueIds(entry.jobActivities, "하루 직업 활동");

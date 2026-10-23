@@ -717,6 +717,9 @@ function dailyMetabolismEntryAt(
       return { kcal: finiteNumberAt(snapshot.kcal, `${path}.tdeeSnapshot.kcal`, { min: 1, max: 100_000 }) as number,
         calculatedAt: isoDateAt(snapshot.calculatedAt, `${path}.tdeeSnapshot.calculatedAt`), source, simpleLevel: simpleLevel as SimpleActivityLevel | undefined };
     })(),
+    ...(item.dietCompletedAutomatically === undefined ? {} : {
+      dietCompletedAutomatically: booleanAt(item.dietCompletedAutomatically, `${path}.dietCompletedAutomatically`)
+    }),
     jobActivities: item.jobActivities.map((activity, index) =>
       dailyWorkActivityAt(activity, `${path}.jobActivities[${index}]`)
     ),
@@ -865,6 +868,7 @@ export function parseBackup(value: string | unknown): DietLogBackup {
       const path = `dailyCompletions[${index}]`;
       const item = objectAt(value, path);
       return { id: dateKeyAt(item.id, `${path}.id`), dietComplete: booleanAt(item.dietComplete, `${path}.dietComplete`),
+        ...(item.automatic === undefined ? {} : { automatic: booleanAt(item.automatic, `${path}.automatic`) }),
         updatedAt: isoDateAt(item.updatedAt, `${path}.updatedAt`) };
     });
     if (new Set(dailyCompletions.map((item) => item.id)).size !== dailyCompletions.length) invalid("dailyCompletions", "날짜가 중복되었습니다.");
@@ -1217,8 +1221,13 @@ export async function importBackup(
           await db.dailyCompletions.put({ ...completion, dietComplete });
         }
         // Learning and statistics share the same canonical food completion.
-        const completions = new Map((await db.dailyCompletions.toArray()).map((item) => [item.id, item.dietComplete]));
-        await db.dailyMetabolismEntries.toCollection().modify((entry) => { entry.dietComplete = completions.get(entry.date) ?? false; });
+        const completions = new Map((await db.dailyCompletions.toArray()).map((item) => [item.id, item]));
+        await db.dailyMetabolismEntries.toCollection().modify((entry) => {
+          const completion = completions.get(entry.date);
+          entry.dietComplete = completion?.dietComplete ?? false;
+          if (completion?.automatic) entry.dietCompletedAutomatically = true;
+          else delete entry.dietCompletedAutomatically;
+        });
       }
     }
   );

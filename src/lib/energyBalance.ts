@@ -24,7 +24,8 @@ export function legacyEnergyData(records: readonly FoodRecord[], entries: readon
     try { return [getRecordDayKey(record, dayStartHour)]; } catch { return []; }
   }));
   const now = new Date().toISOString();
-  const dailyCompletions: DailyCompletion[] = [...dates].map((id) => ({ id, dietComplete: true, updatedAt: now }));
+  const dailyCompletions: DailyCompletion[] = [...dates].map((id) => ({ id, dietComplete: true,
+    ...(entries.find((entry) => entry.date === id)?.dietCompletedAutomatically ? { automatic: true } : {}), updatedAt: now }));
   const metabolismEntries = entries.map((entry) => {
     if (entry.metabolismComplete !== undefined) return entry;
     const migrated: DailyMetabolismEntry = { ...entry, metabolismComplete: true,

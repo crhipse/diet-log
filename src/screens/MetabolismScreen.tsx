@@ -51,6 +51,7 @@ interface MetabolismScreenProps {
   metabolismRecordDays: readonly string[];
   profile: MetabolismProfile | null;
   entry: DailyMetabolismEntry | null;
+  automaticDietComplete?: boolean;
   history: DailyMetabolismEntry[];
   intakeByDate: Readonly<Record<string, number>>;
   isBusy?: boolean;
@@ -233,6 +234,7 @@ export default function MetabolismScreen({
   metabolismRecordDays,
   profile,
   entry,
+  automaticDietComplete = false,
   history,
   intakeByDate,
   isBusy = false,
@@ -305,6 +307,14 @@ export default function MetabolismScreen({
     setEntryDraft({ ...next, metabolismComplete: false, tdeeSnapshot: undefined });
     setEntryDirty(true);
   };
+
+  // Render time-based completion without creating a weight-bearing entry or replacing
+  // an unsaved draft when the clock crosses 02:00.
+  const visibleEntry = automaticDietComplete && !entryDraft.dietComplete
+    ? { ...entryDraft, dietComplete: true, dietCompletedAutomatically: true }
+    : !automaticDietComplete && entryDraft.dietCompletedAutomatically
+      ? { ...entryDraft, dietComplete: false, dietCompletedAutomatically: undefined }
+      : entryDraft;
 
   const requestDiscard = (
     change: () => void,
@@ -451,7 +461,7 @@ export default function MetabolismScreen({
         updatedAt: now
       },
       {
-        ...entryDraft,
+        ...visibleEntry,
         metabolismComplete: complete,
         tdeeSnapshot: complete && summaryEstimate ? {
           kcal: summaryEstimate.tdeeKcal,
@@ -528,6 +538,7 @@ export default function MetabolismScreen({
       />
 
       <div className="metabolism-screen__body">
+        {automaticDietComplete && <p className="completion-status">식단 기록 자동 완료됨</p>}
         <ProfileCard
           profile={profileDraft}
           hasSavedHeight={Boolean(profile?.heightCm)}
@@ -590,7 +601,7 @@ export default function MetabolismScreen({
         {mode === "detail" && (
           <DetailPanel
             profile={profileDraft}
-            entry={entryDraft}
+            entry={visibleEntry}
             estimate={dailyEstimate}
             isBusy={isBusy}
             onProfileChange={changeProfileDraft}
@@ -603,7 +614,7 @@ export default function MetabolismScreen({
         {mode === "learning" && (
           <LearningPanel
             learning={learning}
-            entry={entryDraft}
+            entry={visibleEntry}
             isBusy={isBusy}
             canSave={Boolean(bmr)}
             onEntryChange={changeEntryDraft}

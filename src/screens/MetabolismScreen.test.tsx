@@ -59,6 +59,37 @@ test("체중 입력 전에도 중간저장은 가능하고 완료는 할 수 없
   expect(save.mock.calls[0][1]).toMatchObject({ weightKg: 0, metabolismComplete: false });
 });
 
+test("새벽 자동 완료가 열린 입력 초안의 체중과 활동을 덮어쓰지 않는다", async () => {
+  const onSaveDay = vi.fn().mockResolvedValue(undefined);
+  const props = {
+    selectedDay: "2026-07-26", todayDay: "2026-07-27", dateLabel: "7월 26일 (일)", isToday: false,
+    dietRecordDays: ["2026-07-26"], metabolismRecordDays: ["2026-07-26"], profile, entry,
+    history: [], intakeByDate: {}, onPreviousDate: vi.fn(), onNextDate: vi.fn(), onSelectDate: vi.fn(),
+    onOpenSettings: vi.fn(), onSaveProfile: vi.fn(), onSaveDay
+  };
+  const { rerender } = render(<MetabolismScreen {...props} automaticDietComplete={false} />);
+  fireEvent.change(screen.getByRole("spinbutton", { name: "체중 (kg)" }), { target: { value: "73" } });
+  fireEvent.click(screen.getByRole("button", { name: "사무·재택" }));
+  rerender(<MetabolismScreen {...props} automaticDietComplete />);
+  expect(screen.getByText("식단 기록 자동 완료됨")).toBeInTheDocument();
+  expect(screen.getByRole("spinbutton", { name: "체중 (kg)" })).toHaveValue(73);
+  fireEvent.click(screen.getByRole("button", { name: "대사량 중간저장" }));
+  await waitFor(() => expect(onSaveDay).toHaveBeenCalledTimes(1));
+  expect(onSaveDay.mock.calls[0][1]).toMatchObject({ weightKg: 73, dietComplete: true, dietCompletedAutomatically: true, jobActivities: [expect.objectContaining({ name: "사무·재택" })] });
+});
+
+test("식사만 있는 지난 날짜도 완료 표시하지만 체중이나 대사량 기록은 만들지 않는다", () => {
+  const onSaveDay = vi.fn();
+  render(<MetabolismScreen selectedDay="2026-07-26" todayDay="2026-07-27" dateLabel="7월 26일 (일)" isToday={false}
+    dietRecordDays={["2026-07-26"]} metabolismRecordDays={[]} profile={profile} entry={null} automaticDietComplete
+    history={[]} intakeByDate={{}} onPreviousDate={vi.fn()} onNextDate={vi.fn()} onSelectDate={vi.fn()}
+    onOpenSettings={vi.fn()} onSaveProfile={vi.fn()} onSaveDay={onSaveDay} />);
+  expect(screen.getByText("식단 기록 자동 완료됨")).toBeInTheDocument();
+  expect(screen.getByRole("spinbutton", { name: "체중 (kg)" })).toHaveValue(null);
+  expect(screen.getByRole("button", { name: "대사량 기록 완료" })).toBeDisabled();
+  expect(onSaveDay).not.toHaveBeenCalled();
+});
+
 test("일반 예시는 오늘 기록에만 추가하고 저장 템플릿은 변경하지 않는다", async () => {
   const onSaveDay = vi.fn().mockResolvedValue(undefined);
 

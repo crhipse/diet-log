@@ -2,6 +2,7 @@ import Dexie from "dexie";
 import { db, DietLogDatabase, saveRecord, setDietCompletion, deleteRecordWithPhotos, saveMetabolismProfileAndEntry } from "./db";
 import { createBackup, importBackup } from "./export";
 import { estimateDailyEnergy } from "./metabolism";
+import { completePastDietEntries } from "./dietCompletion";
 import { EMPTY_NUTRIENTS } from "../constants";
 import type { DailyMetabolismEntry, FoodRecord, MetabolismProfile } from "../types";
 
@@ -71,6 +72,44 @@ test("옛 백업을 병합해도 더 최신 식사와 그 완료 상태는 보�
   await importBackup(backup, "merge");
   expect((await db.records.get(record.id))?.note).toBe("최신 수정");
   expect((await db.dailyCompletions.get(date))?.dietComplete).toBe(true);
+});
+
+test("자동 완료 시각 전의 작성 중 식단은 2시에 완료하되, 이후 수정한 식단은 재확인 전까지 제외한다", async () => {
+  await db.records.put(record);
+  await db.dailyMetabolismEntries.put({ ...entry, dietComplete: false });
+  await db.dailyCompletions.put({ id: date, dietComplete: false, updatedAt: `${date}T13:00:00.000Z` });
+  await completePastDietEntries(db, new Date(`${date}T16:59:59.000Z`));
+  expect((await db.dailyCompletions.get(date))?.dietComplete).toBe(false);
+  await completePastDietEntries(db, new Date(`${date}T17:00:00.000Z`));
+  expect(await db.dailyCompletions.get(date)).toMatchObject({ dietComplete: true, automatic: true });
+  expect((await db.dailyMetabolismEntries.get(date))?.dietCompletedAutomatically).toBe(true);
+  await saveRecord({ ...record, note: "완료 후 수정" });
+  await completePastDietEntries(db);
+  expect((await db.dailyCompletions.get(date))?.dietComplete).toBe(false);
+  expect((await db.dailyMetabolismEntries.get(date))?.dietComplete).toBe(false);
+  await setDietCompletion(date, true);
+  await completePastDietEntries(db);
+  expect((await db.dailyCompletions.get(date))?.dietComplete).toBe(true);
+  expect((await db.dailyMetabolismEntries.get(date))?.dietCompletedAutomatically).toBeUndefined();
+});
+
+test("v4 연동 정보를 유지한 채 통계용 완료 데이터만 추가한다", async () => {
+  const name = `sync-upgrade-${crypto.randomUUID()}`;
+  const old = new Dexie(name);
+  old.version(4).stores({ records: "&id, consumedAt, updatedAt", photos: "&id, recordId, [recordId+createdAt], createdAt", settings: "&id",
+    metabolismProfiles: "&id, updatedAt", dailyMetabolismEntries: "&id, date, updatedAt", favoriteFoods: "&id, name, updatedAt", chronicleSync: "&id" });
+  await old.table("records").put(record);
+  await old.table("metabolismProfiles").put(profile);
+  await old.table("dailyMetabolismEntries").put({ ...entry, metabolismComplete: undefined, tdeeSnapshot: undefined });
+  await old.table("chronicleSync").put({ id: "chronicle", phase: "idle", revision: 12 });
+  old.close();
+  const upgraded = new DietLogDatabase(name);
+  try {
+    await upgraded.open();
+    expect((await upgraded.chronicleSync.get("chronicle"))?.revision).toBe(12);
+    expect((await upgraded.dailyMetabolismEntries.get(date))?.metabolismComplete).toBe(true);
+    expect((await upgraded.dailyCompletions.get(date))?.dietComplete).toBe(true);
+  } finally { upgraded.close(); await Dexie.delete(name); }
 });
 
 test("옛 백업의 완료 정보가 없어도 존재하는 과거 기록을 완료로 복원한다", async () => {
