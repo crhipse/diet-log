@@ -47,6 +47,14 @@ async function connected(target = database) {
 }
 
 describe("numeric projection", () => {
+  it("전송에 TDEE와 대사량 완료를 포함하고 완료 취소나 TDEE 수정 시 새 전송을 만든다", async () => {
+    const source = { ...entry("2026-10-26", 0), metabolismComplete: true, tdeeSnapshot: { kcal: 2400, calculatedAt: at, source: "simple" as const } };
+    const payload = projectDietSnapshot([], DEFAULT_SETTINGS, [source], at);
+    expect(payload.metabolismEntries[0]).toMatchObject({ weightKg: null, metabolismComplete: true, tdeeKcal: 2400 });
+    const digest = await dietSnapshotDigest(payload);
+    expect(await dietSnapshotDigest(projectDietSnapshot([], DEFAULT_SETTINGS, [{ ...source, metabolismComplete: false, weightKg: 80 }], at))).not.toBe(digest);
+    expect(await dietSnapshotDigest(projectDietSnapshot([], DEFAULT_SETTINGS, [{ ...source, tdeeSnapshot: { ...source.tdeeSnapshot, kcal: 2500 } }], at))).not.toBe(digest);
+  });
   it("체중 미입력 중간저장은 측정값으로 보내지 않고 수동 식단 완료는 별도로 보낸다", async () => {
     const completion: DailyCompletion = { id: "2026-09-13", dietComplete: true, updatedAt: at };
     const payload = projectDietSnapshot([record()], DEFAULT_SETTINGS, [entry("2026-09-13", 0)], at, [completion]);

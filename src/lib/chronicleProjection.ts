@@ -40,12 +40,14 @@ export function projectDietSnapshot(records: FoodRecord[], settings: AppSettings
     })).sort(byId),
     // In-progress weight=0 is not a measurement and would invalidate the entire
     // server snapshot. Food-only confirmation travels separately, without a fake weight.
-    metabolismEntries: entries.filter(entry => Number.isFinite(entry.weightKg) && entry.weightKg > 0).map(entry => ({
+    metabolismEntries: entries.filter(entry => Number.isFinite(entry.weightKg) && entry.weightKg > 0 || entry.metabolismComplete && entry.tdeeSnapshot && entry.tdeeSnapshot.kcal > 0).map(entry => ({
       id: entry.id,
       date: entry.date,
-      weightKg: entry.weightKg,
+      weightKg: Number.isFinite(entry.weightKg) && entry.weightKg > 0 ? entry.weightKg : null,
       // Server applies its clock to automatic closure; keep manual intent unchanged.
       dietComplete: entry.dietComplete && !entry.dietCompletedAutomatically,
+      metabolismComplete: entry.metabolismComplete === true,
+      tdeeKcal: entry.tdeeSnapshot?.kcal ?? null,
       updatedAt: entry.updatedAt
     })).sort(byId),
     dailyCompletions: completions.filter(completion => !completion.automatic).map(completion => ({
