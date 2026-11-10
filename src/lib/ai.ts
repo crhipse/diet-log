@@ -295,10 +295,14 @@ export async function analyzeFoodRecord(
         // skips up-front thinking for this single analysis request.
         ...(normalized.modelId === "claude-sonnet-5-5"
           ? { thinking: { type: "between_tools" } }
-          : normalized.modelId === "claude-sonnet-5"
+          : normalized.modelId === "claude-sonnet-5" || normalized.modelId === "claude-haiku-5-5"
             ? { thinking: { type: "disabled" } }
             : {}),
         output_config: {
+          // These models always think; use low effort for short structured analysis.
+          ...(normalized.modelId === "claude-opus-5-5" || normalized.modelId === "claude-fable-5-2"
+            ? { effort: "low" }
+            : {}),
           format: {
             type: "json_schema",
             schema: FOOD_ANALYSIS_JSON_SCHEMA

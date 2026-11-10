@@ -290,14 +290,14 @@ export default function SettingsScreen({
               value={modelDraft}
               onChange={(event) => setModelDraft(event.target.value)}
             />
-            <datalist id="model-presets">
-              {MODEL_PRESETS.map((model) => (
-                <option value={model.id} key={model.id}>
-                  {model.name} — {model.description}
-                </option>
-              ))}
-            </datalist>
           </label>
+          <datalist id="model-presets">
+            {MODEL_PRESETS.map((model) => (
+              <option value={model.id} key={model.id}>
+                {model.name} — {model.description}
+              </option>
+            ))}
+          </datalist>
 
           <div className="model-presets">
             {MODEL_PRESETS.map((model) => (

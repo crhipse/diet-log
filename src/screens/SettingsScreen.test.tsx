@@ -29,6 +29,24 @@ function settingsProps(
   };
 }
 
+test("최신 Claude 프리셋을 표시하면서 저장된 사용자 선택은 유지한다", () => {
+  const settings = { ...DEFAULT_SETTINGS, modelId: "claude-sonnet-4-6" };
+  render(<SettingsScreen {...settingsProps({ settings })} />);
+  const input = screen.getByLabelText("AI 모델");
+  expect(input).toHaveValue(settings.modelId);
+  for (const [name, id] of [
+    ["Sonnet 5.5", "claude-sonnet-5-5"],
+    ["Haiku 5.5", "claude-haiku-5-5"],
+    ["Opus 5.5", "claude-opus-5-5"],
+    ["Fable 5.2", "claude-fable-5-2"]
+  ]) {
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(name.replace(".", "\\.")) }));
+    expect(input).toHaveValue(id);
+  }
+  expect(screen.getByText("고비용 · Anthropic 요청 데이터 30일 보관")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Sonnet 4\.6|Haiku 4\.5|Opus 4\.8/ })).not.toBeInTheDocument();
+});
+
 test("저장된 API 키는 DOM에 넣지 않고 변경 버튼을 누른 뒤에만 빈 입력칸을 연다", () => {
   render(<SettingsScreen {...settingsProps()} />);
 

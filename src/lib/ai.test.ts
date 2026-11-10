@@ -135,9 +135,13 @@ describe("buildAnalysisPrompt", () => {
 
 describe("Claude 요청 설정", () => {
   it.each([
-    ["claude-sonnet-5", "disabled"],
-    ["claude-sonnet-5-5", "between_tools"]
-  ])("%s의 사전 추론을 모델별 옵션으로 끈다", async (modelId, thinkingType) => {
+    ["claude-sonnet-5", "disabled", undefined],
+    ["claude-sonnet-5-5", "between_tools", undefined],
+    ["claude-haiku-5-5", "disabled", undefined],
+    ["claude-opus-5-5", undefined, "low"],
+    ["claude-fable-5-2", undefined, "low"],
+    ["claude-sonnet-4-6", undefined, undefined]
+  ])("%s의 식단 분석 요청에 호환되는 옵션을 사용한다", async (modelId, thinkingType, effort) => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -167,7 +171,8 @@ describe("Claude 요청 설정", () => {
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     const body = JSON.parse(String(request.body));
     expect(body.model).toBe(modelId);
-    expect(body.thinking).toEqual({ type: thinkingType });
+    expect(body.thinking).toEqual(thinkingType ? { type: thinkingType } : undefined);
+    expect(body.output_config.effort).toBe(effort);
     expect(body.max_tokens).toBe(4096);
     expect(body.output_config.format.type).toBe("json_schema");
   });
