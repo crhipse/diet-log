@@ -1,6 +1,6 @@
 import Dexie, { type Table } from "dexie";
 
-import { DEFAULT_SETTINGS } from "../constants";
+import { DEFAULT_MODEL_ID, DEFAULT_SETTINGS } from "../constants";
 import type {
   AppSettings,
   DailyCompletion,
@@ -60,6 +60,13 @@ export class DietLogDatabase extends Dexie {
       const migrated = legacyEnergyData(records, entries, profile, settings?.dayStartHour ?? 2);
       await tx.table("dailyCompletions").bulkPut(migrated.dailyCompletions);
       await tx.table("dailyMetabolismEntries").bulkPut(migrated.metabolismEntries);
+    });
+    this.version(6).stores({ settings: "&id" }).upgrade(async (tx) => {
+      const settings = tx.table<AppSettings, "app">("settings");
+      const stored = await settings.get("app");
+      if (stored?.modelId === "claude-sonnet-5") {
+        await settings.update("app", { modelId: DEFAULT_MODEL_ID });
+      }
     });
   }
 }

@@ -291,9 +291,13 @@ export async function analyzeFoodRecord(
         max_tokens: MAX_OUTPUT_TOKENS,
         system: ANALYSIS_SYSTEM_PROMPT,
         messages: [{ role: "user", content }],
-        ...(normalized.modelId.startsWith("claude-sonnet-5")
-          ? { thinking: { type: "disabled" } }
-          : {}),
+        // Sonnet 5.5 rejects `disabled`; without tools, `between_tools` also
+        // skips up-front thinking for this single analysis request.
+        ...(normalized.modelId === "claude-sonnet-5-5"
+          ? { thinking: { type: "between_tools" } }
+          : normalized.modelId === "claude-sonnet-5"
+            ? { thinking: { type: "disabled" } }
+            : {}),
         output_config: {
           format: {
             type: "json_schema",

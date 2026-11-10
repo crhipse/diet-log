@@ -134,11 +134,14 @@ describe("buildAnalysisPrompt", () => {
 });
 
 describe("Claude 요청 설정", () => {
-  it("Sonnet 5의 불필요한 adaptive thinking을 끈다", async () => {
+  it.each([
+    ["claude-sonnet-5", "disabled"],
+    ["claude-sonnet-5-5", "between_tools"]
+  ])("%s의 사전 추론을 모델별 옵션으로 끈다", async (modelId, thinkingType) => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
-          model: "claude-sonnet-5",
+          model: modelId,
           stop_reason: "end_turn",
           content: [{ type: "text", text: JSON.stringify(validPayload) }],
           usage: {
@@ -156,14 +159,15 @@ describe("Claude 요청 설정", () => {
 
     await analyzeFoodRecord({
       apiKey: "sk-ant-test",
-      modelId: "claude-sonnet-5",
+      modelId,
       note: "삼겹살 150g",
       photos: []
     });
 
     const request = fetchMock.mock.calls[0][1] as RequestInit;
     const body = JSON.parse(String(request.body));
-    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.model).toBe(modelId);
+    expect(body.thinking).toEqual({ type: thinkingType });
     expect(body.max_tokens).toBe(4096);
     expect(body.output_config.format.type).toBe("json_schema");
   });

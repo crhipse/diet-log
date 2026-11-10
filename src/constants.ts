@@ -1,7 +1,7 @@
 import type { AppSettings, Nutrients } from "./types";
 
 export const APP_NAME = "식단관리";
-export const DEFAULT_MODEL_ID = "claude-sonnet-5";
+export const DEFAULT_MODEL_ID = "claude-sonnet-5-5";
 export const MAX_PHOTOS_PER_RECORD = 5;
 export const MAX_IMAGE_DIMENSION = 1024;
 export const IMAGE_QUALITY = 0.78;
@@ -26,8 +26,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export const MODEL_PRESETS = [
   {
-    id: "claude-sonnet-5",
-    name: "Sonnet 5",
+    id: DEFAULT_MODEL_ID,
+    name: "Sonnet 5.5",
     description: "기본 · 정확도와 비용의 균형"
   },
   {
