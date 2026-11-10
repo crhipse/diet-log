@@ -2,25 +2,38 @@ import { useMemo, useRef, useState, type PointerEvent } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Minus, Plus, Settings } from "lucide-react";
 import { addDays } from "../lib/date";
 import { aggregateEnergy, movePeriod, periodStart, type EnergyPoint, type StatisticsUnit } from "../lib/energyBalance";
+import { aggregateNutrientIntake, type DailyNutrientIntake, type IntakeNutrient } from "../lib/intakeStatistics";
 import "./StatisticsScreen.css";
 
 const labels = { day: "일", week: "주", month: "월" } as const;
+const metrics = { balance: "칼로리 수지", proteinG: "단백질", fatG: "지방" } as const;
+type Metric = "balance" | IntakeNutrient;
+type ChartPoint = { date: string; value: number; energy?: EnergyPoint };
 const number = (value: number) => Math.round(value).toLocaleString("ko-KR");
+const grams = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 });
 export const balanceLabel = (value: number) => value < 0 ? `적자 ${number(-value)} kcal`
   : value > 0 ? `흑자 ${number(value)} kcal` : "균형 0 kcal";
 
-export default function StatisticsScreen({ points, todayDay, selectedDay, onOpenDay, onOpenSettings }: {
+export default function StatisticsScreen({ points, nutrientPoints, todayDay, selectedDay, onOpenDay, onOpenSettings }: {
   points: EnergyPoint[];
+  nutrientPoints: DailyNutrientIntake[];
   todayDay: string;
   selectedDay: string;
   onOpenDay: (date: string, section: "diet" | "metabolism") => void;
   onOpenSettings: () => void;
 }) {
+  const [metric, setMetric] = useState<Metric>("balance");
   const [unit, setUnit] = useState<StatisticsUnit>("day");
   const [end, setEnd] = useState(selectedDay || todayDay);
   const [count, setCount] = useState(30);
   const [focus, setFocus] = useState(selectedDay || todayDay);
-  const grouped = useMemo(() => aggregateEnergy(points, unit), [points, unit]);
+  const grouped = useMemo<ChartPoint[]>(() => metric === "balance"
+    ? aggregateEnergy(points, unit).map((energy) => ({ date: energy.date, value: energy.balance, energy }))
+    : aggregateNutrientIntake(nutrientPoints, metric, unit), [points, nutrientPoints, unit, metric]);
+  const isBalance = metric === "balance";
+  const title = isBalance ? metrics.balance : `${metrics[metric]} 섭취량`;
+  const valueLabel = (value: number) => isBalance ? balanceLabel(value) : `${grams.format(value)} g`;
+  const valueClass = (value: number) => isBalance ? (value > 0 ? "energy-surplus" : "energy-deficit") : "";
   const todayPeriod = periodStart(todayDay, unit);
   const endPeriod = periodStart(end > todayDay ? todayDay : end, unit);
   const earliest = grouped[0]?.date ?? todayPeriod;
@@ -33,16 +46,16 @@ export default function StatisticsScreen({ points, todayDay, selectedDay, onOpen
   const dates = Array.from({ length: visibleCount }, (_, index) => movePeriod(start, index, unit));
   const visible = dates.flatMap((date) => byDate.has(date) ? [byDate.get(date)!] : []);
   const selected = byDate.get(periodStart(focus, unit));
-  const sum = visible.reduce((total, point) => total + point.balance, 0);
-  const scale = Math.max(100, ...visible.map((point) => Math.abs(point.balance))) * 1.15;
+  const axisMax = Math.max(isBalance ? 100 : 10, ...visible.map((point) => Math.abs(point.value)));
+  const sum = visible.reduce((total, point) => total + point.value, 0);
   const x = (index: number) => 48 + index / Math.max(1, visibleCount - 1) * 292;
-  const y = (balance: number) => 114 - balance / scale * 83;
+  const y = (value: number) => isBalance ? 114 - value / (axisMax * 1.15) * 83 : 198 - value / axisMax * 156;
   const paths: string[] = [];
   let segment = "";
   dates.forEach((date, index) => {
     const point = byDate.get(date);
     if (!point) { if (segment) paths.push(segment); segment = ""; return; }
-    segment += `${segment ? " L" : "M"}${x(index)} ${y(point.balance)}`;
+    segment += `${segment ? " L" : "M"}${x(index)} ${y(point.value)}`;
   });
   if (segment) paths.push(segment);
   const selectedIndex = dates.indexOf(periodStart(focus, unit));
@@ -100,6 +113,12 @@ export default function StatisticsScreen({ points, todayDay, selectedDay, onOpen
       <button className="icon-button" type="button" aria-label="설정 열기" onClick={onOpenSettings}><Settings size={21} aria-hidden="true" /></button>
     </header>
     <div className="statistics-body">
+      <div className="statistics-units statistics-metrics" role="group" aria-label="통계 항목">
+        {(Object.keys(metrics) as Metric[]).map((value) => <button type="button" key={value}
+          aria-pressed={metric === value} onClick={() => { setMetric(value); pointers.current.clear(); }}>
+          {metrics[value]}
+        </button>)}
+      </div>
       <div className="statistics-toolbar">
         <div className="statistics-units" aria-label="차트 집계 단위">
           {(["day", "week", "month"] as const).map((value) => <button type="button" key={value}
@@ -114,15 +133,15 @@ export default function StatisticsScreen({ points, todayDay, selectedDay, onOpen
             }} />
         </label>
       </div>
-      <section className="statistics-focus" aria-label="선택 기간 칼로리 수지">
+      <section className="statistics-focus" aria-label={`선택 기간 ${title}`}>
         <p>{focusPeriod}{unit !== "day" ? ` ~ ${focusEnd > todayDay ? todayDay : focusEnd}` : ""}</p>
-        <strong className={selected && selected.balance > 0 ? "energy-surplus" : "energy-deficit"}>
-          {selected ? balanceLabel(selected.balance) : "완료한 기록 없음"}</strong>
-        {selected && <div><span>섭취 <b>{number(selected.intake)}</b></span><span>TDEE <b>{number(selected.tdee)}</b></span><small>kcal</small></div>}
+        <strong className={selected ? valueClass(selected.value) : ""}>
+          {selected ? valueLabel(selected.value) : isBalance ? "완료한 기록 없음" : `${title} 기록 없음`}</strong>
+        {selected?.energy && <div><span>섭취 <b>{number(selected.energy.intake)}</b></span><span>TDEE <b>{number(selected.energy.tdee)}</b></span><small>kcal</small></div>}
       </section>
-      <section className="statistics-chart-card" aria-label="칼로리 수지 차트">
-        <div className="statistics-chart-heading"><span>칼로리 흑자·적자</span><small>kcal</small></div>
-        <svg viewBox="0 0 360 240" role="img" aria-label={`${labels[unit]}별 칼로리 수지 꺾은선 그래프`}
+      <section className="statistics-chart-card" aria-label={`${title} 차트`}>
+        <div className="statistics-chart-heading"><span>{isBalance ? "칼로리 흑자·적자" : title}</span><small>{isBalance ? "kcal" : "g"}</small></div>
+        <svg viewBox="0 0 360 240" role="img" aria-label={`${labels[unit]}별 ${title} 꺾은선 그래프`}
           className="statistics-chart" tabIndex={0} onPointerDown={pointerDown} onPointerMove={pointerMove}
           onPointerUp={pointerUp} onPointerCancel={(event) => { pointers.current.delete(event.pointerId); gesture.current.moved = true; }}
           onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
@@ -130,10 +149,10 @@ export default function StatisticsScreen({ points, todayDay, selectedDay, onOpen
             setFocus(date); if (date < start || date > endPeriod) setEnd(date);
           } }}>
           <title>기간을 넓히려면 두 손가락을 오므리고, 좁히려면 벌리세요. 좌우로 밀어 과거로 이동할 수 있어요.</title>
-          {[-1, 0, 1].map((value) => <g key={value}><line x1="48" x2="340" y1={y(value * scale / 1.15)} y2={y(value * scale / 1.15)}
-            className={value === 0 ? "chart-zero" : "chart-grid"} /><text x="42" y={y(value * scale / 1.15) + 4} textAnchor="end">{number(value * scale / 1.15)}</text></g>)}
-          {paths.map((path, index) => <path key={index} d={path} className="energy-line" />)}
-          {dates.map((date, index) => { const point = byDate.get(date); return point ? <circle key={date} cx={x(index)} cy={y(point.balance)} r={visibleCount > 90 ? 1.5 : 3} className={point.balance > 0 ? "chart-surplus" : "chart-deficit"} /> : null; })}
+          {(isBalance ? [-1, 0, 1] : [0, 0.5, 1]).map((tick) => <g key={tick}><line x1="48" x2="340" y1={y(tick * axisMax)} y2={y(tick * axisMax)}
+            className={isBalance && tick === 0 ? "chart-zero" : "chart-grid"} /><text x="42" y={y(tick * axisMax) + 4} textAnchor="end">{number(tick * axisMax)}</text></g>)}
+          {paths.map((path, index) => <path key={index} d={path} className={isBalance ? "energy-line" : "energy-line nutrient-line"} />)}
+          {dates.map((date, index) => { const point = byDate.get(date); return point ? <circle key={date} cx={x(index)} cy={y(point.value)} r={visibleCount > 90 ? 1.5 : 3} className={isBalance ? (point.value > 0 ? "chart-surplus" : "chart-deficit") : "chart-nutrient"} /> : null; })}
           {selectedIndex >= 0 && <line x1={x(selectedIndex)} x2={x(selectedIndex)} y1="20" y2="208" className="chart-crosshair" />}
           {[0, Math.floor((visibleCount - 1) / 2), visibleCount - 1].map((index) => <text key={index} x={x(index)} y="230" textAnchor="middle">{dateLabel(dates[index])}</text>)}
         </svg>
@@ -146,19 +165,20 @@ export default function StatisticsScreen({ points, todayDay, selectedDay, onOpen
         <p className="statistics-gesture-help">좌우로 이동 · 두 손가락을 오므려 기간 늘리기</p>
       </section>
       <section className="statistics-range-summary">
-        <span>화면 기간 합계</span><strong>{visible.length ? balanceLabel(sum) : "—"}</strong>
+        <span>화면 기간 합계</span><strong>{visible.length ? valueLabel(sum) : "—"}</strong>
         <small>{start} ~ {addDays(movePeriod(endPeriod, 1, unit), -1) > todayDay ? todayDay : addDays(movePeriod(endPeriod, 1, unit), -1)}</small>
       </section>
-      <section className="statistics-history" aria-label="과거 칼로리 수지">
+      <section className="statistics-history" aria-label={`과거 ${title}`}>
         <h2>{labels[unit]}별 기록</h2>
-        {!visible.length && <p className="empty-inline">식단과 대사량 기록을 완료하면 여기에 표시돼요.</p>}
+        {!visible.length && <p className="empty-inline">{isBalance ? "식단과 대사량 기록을 완료하면 여기에 표시돼요."
+          : `음식별 ${metrics[metric]} 값을 입력하고 식단을 완료하면 여기에 표시돼요.`}</p>}
         {[...visible].reverse().map((point) => <div className="statistics-row" key={point.date}>
-          <button type="button" className="statistics-row-main" aria-label={`${point.date} 수지 보기`}
+          <button type="button" className="statistics-row-main" aria-label={`${point.date} ${isBalance ? "수지" : title} 보기`}
             onClick={() => setFocus(point.date)}><span>{dateLabel(point.date)}</span>
-            <strong className={point.balance > 0 ? "energy-surplus" : "energy-deficit"}>{balanceLabel(point.balance)}</strong>
-            <small>섭취 {number(point.intake)} · TDEE {number(point.tdee)}</small></button>
+            <strong className={valueClass(point.value)}>{valueLabel(point.value)}</strong>
+            {point.energy && <small>섭취 {number(point.energy.intake)} · TDEE {number(point.energy.tdee)}</small>}</button>
           <div className="statistics-row-links"><button type="button" onClick={() => onOpenDay(point.date, "diet")}>식단</button>
-            <button type="button" onClick={() => onOpenDay(point.date, "metabolism")}>대사량</button></div>
+            {isBalance && <button type="button" onClick={() => onOpenDay(point.date, "metabolism")}>대사량</button>}</div>
         </div>)}
       </section>
     </div>

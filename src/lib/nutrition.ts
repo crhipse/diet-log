@@ -112,19 +112,18 @@ export function sumRecords(records: readonly FoodRecord[]): DailyTotals {
 }
 
 /**
- * Returns a day's calorie total only when every saved record contains at
- * least one food and every food has a calorie value. This keeps pending or
- * failed records out of personalized TDEE learning.
+ * Returns a total only when each record has food and every food has a
+ * known value for this nutrient. A genuinely recorded zero is still valid.
  */
-export function completeEnergyTotal(
-  records: readonly FoodRecord[]
+export function completeNutrientTotal(
+  records: readonly FoodRecord[], key: keyof Nutrients
 ): number | null {
   if (
     records.length === 0 ||
     records.some(
       (record) =>
         record.foods.length === 0 ||
-        record.foods.some((food) => !isKnown(food.nutrients.energyKcal))
+        record.foods.some((food) => !isKnown(food.nutrients[key]))
     )
   ) {
     return null;
@@ -132,9 +131,12 @@ export function completeEnergyTotal(
   return rounded(
     records
       .flatMap((record) => record.foods)
-      .reduce((sum, food) => sum + food.nutrients.energyKcal!, 0)
+      .reduce((sum, food) => sum + food.nutrients[key]!, 0)
   );
 }
+
+export const completeEnergyTotal = (records: readonly FoodRecord[]) =>
+  completeNutrientTotal(records, "energyKcal");
 
 export const calculateRecordTotals = (
   record: Pick<FoodRecord, "foods">

@@ -1,6 +1,7 @@
 import { EMPTY_NUTRIENTS } from "../constants";
 import type { DailyCompletion, DailyMetabolismEntry, FoodRecord, MetabolismProfile } from "../types";
 import { aggregateEnergy, dailyEnergyBalances, legacyEnergyData, periodStart } from "./energyBalance";
+import { aggregateNutrientIntake, dailyNutrientIntake } from "./intakeStatistics";
 
 const now = "2026-10-23T12:00:00.000Z";
 export const statisticsProfile: MetabolismProfile = { id: "metabolism", sex: "male", birthDate: "1990-01-01", heightCm: 175,
@@ -13,6 +14,25 @@ export const statsEntry = (date: string, kcal = 2500): DailyMetabolismEntry => (
   dietComplete: true, metabolismComplete: true, tdeeSnapshot: { kcal, calculatedAt: now, source: "detail" },
   jobActivities: [], exercises: [], createdAt: now, updatedAt: now });
 const completion = (id: string): DailyCompletion => ({ id, dietComplete: true, updatedAt: now });
+
+test("영양 통계는 각 영양소의 누락을 별도로 처리하고 실제 0은 유지한다", () => {
+  const dates = ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-17"];
+  const records = dates.map((date) => statsRecord(date));
+  records[0].foods[0].nutrients = { ...EMPTY_NUTRIENTS, proteinG: 20.5, fatG: 10 };
+  records[0].foods.push({ ...records[0].foods[0], id: "second-food", nutrients: { ...EMPTY_NUTRIENTS, proteinG: 4.5 } });
+  records[1].foods[0].nutrients = { ...EMPTY_NUTRIENTS, proteinG: 0, fatG: 8 };
+  records[2].foods[0].nutrients.proteinG = 60; // 미완료
+  records[3].foods[0].nutrients.proteinG = 60;
+  records[3].analysis.status = "pending";
+  records[4].foods[0].nutrients.proteinG = 60;
+  records[4].analysis.status = "failed";
+  records[5].foods[0].nutrients.proteinG = 60; // 미래
+  const daily = dailyNutrientIntake(records, dates.filter((_, index) => index !== 2).map(completion), 2, "2026-10-16");
+  expect(daily).toEqual([{ date: dates[0], proteinG: 25, fatG: null }, { date: dates[1], proteinG: 0, fatG: 8 }]);
+  expect(aggregateNutrientIntake(daily, "proteinG", "day")).toEqual([{ date: dates[0], value: 25 }, { date: dates[1], value: 0 }]);
+  expect(aggregateNutrientIntake(daily, "fatG", "week")).toEqual([{ date: dates[0], value: 8 }]);
+  expect(aggregateNutrientIntake(daily, "fatG", "month")).toEqual([{ date: "2026-10-01", value: 8 }]);
+});
 
 test("식단과 대사량이 모두 완료되고 모든 열량이 알려진 날짜만 계산한다", () => {
   const dates = Array.from({ length: 8 }, (_, index) => `2026-10-${String(index + 12).padStart(2, "0")}`);

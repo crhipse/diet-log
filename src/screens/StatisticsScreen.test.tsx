@@ -7,11 +7,37 @@ const points: EnergyPoint[] = [
   { date: "2026-10-19", end: "2026-10-19", intake: 2100, tdee: 2500, balance: -400 },
   { date: "2026-10-23", end: "2026-10-23", intake: 2000, tdee: 2300, balance: -300 }
 ];
-function renderStats() {
+function renderStats(energyPoints = points) {
   const onOpenDay = vi.fn();
-  render(<StatisticsScreen points={points} selectedDay="2026-10-23" todayDay="2026-10-23" onOpenDay={onOpenDay} onOpenSettings={vi.fn()} />);
+  render(<StatisticsScreen points={energyPoints} nutrientPoints={[
+    { date: "2026-10-01", proteinG: 15, fatG: 8 },
+    { date: "2026-10-19", proteinG: 74, fatG: null },
+    { date: "2026-10-23", proteinG: 85.5, fatG: 46 }
+  ]} selectedDay="2026-10-23" todayDay="2026-10-23" onOpenDay={onOpenDay} onOpenSettings={vi.fn()} />);
   return onOpenDay;
 }
+
+test("대사량이 없어도 단백질·지방 섭취량을 전환해 일·주·월 합계를 본다", () => {
+  const onOpenDay = renderStats([]);
+  fireEvent.click(screen.getByRole("button", { name: "단백질" }));
+  const protein = screen.getByRole("region", { name: "선택 기간 단백질 섭취량" });
+  expect(within(protein).getByText("85.5 g")).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "일별 단백질 섭취량 꺾은선 그래프" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "주" }));
+  expect(within(protein).getByText("159.5 g")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "월" }));
+  expect(within(protein).getByText("174.5 g")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "지방" }));
+  const fat = screen.getByRole("region", { name: "선택 기간 지방 섭취량" });
+  expect(within(fat).getByText("54 g")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "일" }));
+  fireEvent.change(screen.getByLabelText("통계 기준 날짜"), { target: { value: "2026-10-19" } });
+  expect(within(fat).getByText("지방 섭취량 기록 없음")).toBeInTheDocument();
+  const history = screen.getByRole("region", { name: "과거 지방 섭취량" });
+  fireEvent.click(within(history).getByRole("button", { name: "식단" }));
+  expect(onOpenDay).toHaveBeenCalledWith("2026-10-01", "diet");
+});
 
 test("일·주·월 집계는 해당 기간 합계를 표시하고 과거 날짜로 직접 이동할 수 있다", () => {
   const onOpenDay = renderStats();

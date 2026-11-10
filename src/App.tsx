@@ -11,6 +11,7 @@ import RecordEditorScreen, {
 } from "./screens/RecordEditorScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import StatisticsScreen from "./screens/StatisticsScreen";
+import { dailyNutrientIntake } from "./lib/intakeStatistics";
 import { completeIntake, dailyEnergyBalances } from "./lib/energyBalance";
 import { chronicleSync } from "./lib/chronicleSync";
 import { analyzeFoodRecord, testApiKey } from "./lib/ai";
@@ -270,6 +271,8 @@ export default function App() {
 
   const energyPoints = useMemo(() => settings ? dailyEnergyBalances(records, metabolismEntries,
     effectiveCompletions, settings.dayStartHour, todayDay) : [], [records, metabolismEntries, effectiveCompletions, settings, todayDay]);
+  const nutrientPoints = useMemo(() => settings ? dailyNutrientIntake(records, effectiveCompletions,
+    settings.dayStartHour, todayDay) : [], [records, effectiveCompletions, settings, todayDay]);
 
   const selectedCompletion = effectiveCompletions.find((item) => item.id === selectedDay);
   const homeEnergy = useMemo(() => {
@@ -1009,7 +1012,7 @@ export default function App() {
         />
       )}
 
-      {screen.name === "statistics" && <StatisticsScreen points={energyPoints} todayDay={todayDay}
+      {screen.name === "statistics" && <StatisticsScreen points={energyPoints} nutrientPoints={nutrientPoints} todayDay={todayDay}
         selectedDay={selectedDay} onOpenDay={(date, section) => {
           setSelectedDay(date); setScreen(section === "diet" ? { name: "home" } : { name: "metabolism" });
         }} onOpenSettings={() => setScreen({ name: "settings", from: "statistics" })} />}

@@ -3,6 +3,8 @@
 .statistics-units { display: flex; border: 1px solid var(--line); border-radius: 12px; padding: 3px; background: var(--surface-soft); }
 .statistics-units button { border: 0; border-radius: 8px; background: transparent; min-width: 42px; min-height: 40px; font-size: 14px; font-weight: 750; }
 .statistics-units button[aria-pressed=true] { background: var(--ink); color: white; }
+.statistics-metrics { margin-bottom: 12px; }
+.statistics-metrics button { flex: 1; }
 .statistics-date { display: flex; align-items: center; gap: 5px; color: var(--muted); }
 .statistics-date input { max-width: 146px; padding: 6px 2px; border: 0; background: transparent; font-size: 13px; }
 .statistics-focus { display: grid; gap: 9px; padding: 24px 3px 21px; }
@@ -22,6 +24,8 @@
 .energy-line { stroke: #547b86; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .chart-surplus { fill: #ac513e; }
 .chart-deficit { fill: #376d98; }
+.nutrient-line { stroke: #28786b; }
+.chart-nutrient { fill: #28786b; }
 .chart-crosshair { stroke: #b5aea1; stroke-width: 1; stroke-dasharray: 2 3; }
 .statistics-chart-controls { display: flex; justify-content: center; gap: 10px; }
 .statistics-chart-controls .icon-button { width: 42px; height: 38px; background: var(--surface-soft); }
